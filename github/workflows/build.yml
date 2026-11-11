@@ -1,0 +1,37 @@
+name: Build RBA-6A
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "Configure (universal: Apple Silicon + Intel)"
+        run: cmake -B build -G Xcode -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+
+      - name: Build VST3 + AU
+        run: cmake --build build --config Release --target RBA6A_VST3 RBA6A_AU -- -quiet
+
+      - name: Ad-hoc sign
+        run: |
+          codesign --force --deep -s - "build/RBA6A_artefacts/Release/VST3/RBA-6A.vst3"
+          codesign --force --deep -s - "build/RBA6A_artefacts/Release/AU/RBA-6A.component"
+
+      - name: Check architectures
+        run: lipo -info "build/RBA6A_artefacts/Release/VST3/RBA-6A.vst3/Contents/MacOS/RBA-6A"
+
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp -R "build/RBA6A_artefacts/Release/VST3/RBA-6A.vst3" dist/
+          cp -R "build/RBA6A_artefacts/Release/AU/RBA-6A.component" dist/
+          cd dist && zip -qry ../RBA-6A-macOS.zip .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RBA-6A-macOS
+          path: RBA-6A-macOS.zip

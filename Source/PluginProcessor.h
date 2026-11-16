@@ -5,10 +5,12 @@
 
 namespace ID
 {
-    static const juce::String input { "input" }, threshold { "threshold" }, attack { "attack" }, release { "release" },
-                              filter { "filter" }, debump { "debump" }, makeup { "makeup" }, mix { "mix" },
-                              power { "power" }, prepos { "prepos" }, balance { "balance" }, link { "link" },
-                              msmode { "msmode" }, oslive { "oslive" }, osrender { "osrender" }, rendermode { "rendermode" };
+    static const juce::String unit { "unit" }, power { "power" }, input { "input" }, bump { "bump" },
+        threshold { "threshold" }, attack { "attack" }, release { "release" }, rcarel { "rcarel" },
+        filter { "filter" }, rcafilter { "rcafilter" }, balance { "balance" }, link { "link" }, msmode { "msmode" },
+        clip { "clip" }, crush { "crush" }, clipmakeup { "clipmakeup" },
+        pre { "pre" }, predrive { "predrive" }, prelines { "prelines" }, threed { "threed" },
+        makeup { "makeup" }, mix { "mix" }, oslive { "oslive" }, osrender { "osrender" }, rendermode { "rendermode" };
 }
 
 class RbaProcessor : public juce::AudioProcessor
@@ -44,10 +46,17 @@ public:
     juce::AudioProcessorValueTreeState apvts;
 
     // for the editor
-    std::atomic<float> grMeter { 0.f };        // dB, max over the last block
-    std::atomic<int>   activeFactor { 1 };     // oversampling factor in use
+    std::atomic<float> grMeter { 0.f };                 // dB, max over the last block
+    std::atomic<float> outPeak[2] { { 0.f }, { 0.f } }; // linear, max over the last block
+    std::atomic<int>   activeFactor { 1 };
     std::atomic<bool>  rendering { false };
+    std::atomic<int>   latencyNow { 0 };
+    double sampleRateNow() const { return fs; }
     int maxFactorForRate() const { return maxFactor; }
+
+    enum PIdx { pUnit, pPower, pInput, pBump, pThreshold, pAttack, pRelease, pRcaRel, pFilter, pRcaFilter, pBalance,
+                pLink, pMs, pClip, pCrush, pClipMk, pPre, pPreDrive, pPreLines, p3D, pMakeup, pMix,
+                pOsLive, pOsRender, pRenderMode, pCount };
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
@@ -62,12 +71,20 @@ private:
         int latency = 0;                                        // base-rate samples
         rba::Channel ch[2];
         rba::Detector det[2];
+        rba::RcaStage rca[2];
+        rba::RcaDetector rdet[2];
+        rba::BumpPath post[2];
+        rba::Clipper clip[2];
+        rba::PreDrive pre[2];
     };
     std::array<OsSet, 4> sets;
     int activeSet = 0, maxFactor = 8, fixedLatency = 0, numCh = 2;
     double fs = 48000;
 
-    // fixed-latency alignment: wet gets (fixedLatency - set latency), dry gets fixedLatency
+    rba::PreEQ preEq[2];
+    rba::FracDelay preDel[2];
+    bool lastStereoLines = false;
+
     struct Delay
     {
         std::vector<float> buf; int w = 0;
@@ -86,7 +103,7 @@ private:
     juce::AudioBuffer<float> dryBuf;
     juce::SmoothedValue<float> makeupSm, mixSm;
 
-    std::atomic<float>* p[16] {};
+    std::atomic<float>* p[pCount] {};
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (RbaProcessor)
 };

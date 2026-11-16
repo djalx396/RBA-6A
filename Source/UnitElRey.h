@@ -15,8 +15,10 @@ inline Unit makeElRey()
     u.colour = { 1999.9209, 0.00016077152, 0.0010470612, -0.0053676171, 1.9550978, 7.6774328, 0.18936022 };
     u.drive  = { 1317.6132, 0.086053803, 0.00076588594, -0.00041110038, 3.8902016, 19.027972, 0.031411513 };
     u.T0 = 8.2596015; u.slope = 1.0028172; u.knee = 3.3290598; u.detPow = 1;
-    u.attackKnots[0] = 0.087918119; u.attackKnots[1] = 0.048630166; u.attackKnots[2] = 0.0044105953; u.attackKnots[3] = 0.0075891248; u.attackKnots[4] = 0.0045899889;
-    u.releaseKnots[0] = 0.55270807; u.releaseKnots[1] = 0.39964098; u.releaseKnots[2] = 0.24106443; u.releaseKnots[3] = 0.15818276; u.releaseKnots[4] = 0.1180582; u.releaseKnots[5] = 0.028742208; u.releaseKnots[6] = 0.010525573; u.releaseKnots[7] = 0.0072030446; u.releaseKnots[8] = 0.0041415418;
+    u.attackKnots[0] = 0.059383382; u.attackKnots[1] = 0.038490791; u.attackKnots[2] = 0.010030966; u.attackKnots[3] = 0.0075303243; u.attackKnots[4] = 0.0047805071;
+    u.releaseKnots[0] = 0.59006332; u.releaseKnots[1] = 0.43047192; u.releaseKnots[2] = 0.26625095; u.releaseKnots[3] = 0.18387626; u.releaseKnots[4] = 0.10138378; u.releaseKnots[5] = 0.057353391; u.releaseKnots[6] = 0.022717453; u.releaseKnots[7] = 0.015980596; u.releaseKnots[8] = 0.0090134418;
+    u.smAtkKnots[0] = 0.00054948561; u.smAtkKnots[1] = 0.0003663358; u.smAtkKnots[2] = 0.00014843066; u.smAtkKnots[3] = 0.0001099032; u.smAtkKnots[4] = 0.00093239873;
+    u.smRelKnots[0] = 0.038253677; u.smRelKnots[1] = 0.028373258; u.smRelKnots[2] = 0.020934882; u.smRelKnots[3] = 0.017633325; u.smRelKnots[4] = 0.014156689; u.smRelKnots[5] = 0.012736787; u.smRelKnots[6] = 0.0052869142; u.smRelKnots[7] = 0.00042126113; u.smRelKnots[8] = 0.00042125969;
     u.scQ = 0.707; u.scScale = 1.2391689;
     u.sqK = 0.15222146; u.sqT = -2.6297661; u.sqW = 4.6355901; u.sqAtk = 0.002; u.sqRel = 0.05;
     u.k3max = -7.9728216e-05; u.k3tau = 0.00014281626; u.k3base = 0;

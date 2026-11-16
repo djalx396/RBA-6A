@@ -30,6 +30,8 @@ inline Unit makeElRey()
     u.T0 = {f("T0")}; u.slope = {f("slope")}; u.knee = {f("knee")}; u.detPow = {f("detPow")};
     {"; ".join(f"u.attackKnots[{i}] = {v:.8g}" for i,v in enumerate(P["attackKnots"]))};
     {"; ".join(f"u.releaseKnots[{i}] = {v:.8g}" for i,v in enumerate(P["releaseKnots"]))};
+    {"; ".join(f"u.smAtkKnots[{i}] = {v:.8g}" for i,v in enumerate(P.get("smAtkKnots",[0]*5)))};
+    {"; ".join(f"u.smRelKnots[{i}] = {v:.8g}" for i,v in enumerate(P.get("smRelKnots",[0]*9)))};
     u.scQ = {f("scQ")}; u.scScale = {P.get("scScale",1.0):.8g};
     u.sqK = {P.get("sqK",0):.8g}; u.sqT = {P.get("sqT",0):.8g}; u.sqW = {P.get("sqW",6):.8g}; u.sqAtk = {P.get("sqAtk",0.002):.8g}; u.sqRel = {P.get("sqRel",0.05):.8g};
     u.k3max = {f("k3max")}; u.k3tau = {f("k3tau")}; u.k3base = {f("k3base")};

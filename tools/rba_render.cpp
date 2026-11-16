@@ -25,6 +25,8 @@ int main (int argc, char** argv)
         if (k == "bump" || k == "flat") { std::string t; EQBand b; is >> t >> b.f >> b.Q >> b.g; b.type = bq (t); (k == "bump" ? u.bump : u.flat).push_back (b); continue; }
         if (k == "attackKnots") { for (double& v : u.attackKnots) is >> v; continue; }
         if (k == "releaseKnots") { for (double& v : u.releaseKnots) is >> v; continue; }
+        if (k == "smAtkKnots") { for (double& v : u.smAtkKnots) is >> v; continue; }
+        if (k == "smRelKnots") { for (double& v : u.smRelKnots) is >> v; continue; }
         double v; is >> v;
         std::map<std::string, double*> m = {
             { "fs", &fs }, { "bumpGainDb", &u.bumpGainDb }, { "flatGainDb", &u.flatGainDb },

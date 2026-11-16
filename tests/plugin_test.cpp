@@ -3,6 +3,7 @@
 #include "../Source/PluginProcessor.h"
 #include "../Source/UnitElRey.h"
 #include <cstdio>
+#include <cstdlib>
 #include <vector>
 #include <cmath>
 
@@ -29,6 +30,22 @@ static void setP (RbaProcessor& p, const char* id, float plain)
 int main()
 {
     juce::ScopedJuceInitialiser_GUI init;
+    if (auto* snap = std::getenv ("RBA_SNAPSHOT"))       // render the editor to PNG files and exit
+    {
+        for (int u = 0; u <= 1; ++u)
+        {
+            RbaProcessor p; setP (p, "unit", (float) u); p.setPlayConfigDetails (2, 2, 96000, 512); p.prepareToPlay (96000, 512);
+            if (u == 1) { setP (p, "clip", 1); setP (p, "pre", 1); setP (p, "bump", 0); }
+            p.grMeter = u ? 6.0f : 4.5f; p.outPeak[0] = 0.55f; p.outPeak[1] = 0.5f;
+            std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor());
+            ed->setSize (1120, 620);
+            auto img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f);
+            juce::File f (juce::String (snap) + (u ? "_rca.png" : "_elrey.png"));
+            f.deleteFile(); juce::FileOutputStream os (f); juce::PNGImageFormat png; png.writeImageToStream (img, os);
+            std::printf ("wrote %s\n", f.getFullPathName().toRawUTF8());
+        }
+        return 0;
+    }
     const double fs = 96000; const int N = (int) fs * 3;
     std::vector<float> x ((size_t) N);
     for (int i = 0; i < N; ++i)                       // 1 kHz tone with a +20 dB step at 1 s, back at 2 s
@@ -44,7 +61,13 @@ int main()
         rba::MonoModel m; m.prepare (rba::makeElRey(), fs); rba::Settings s; s.threshold = 25.4; m.update (s);
         const int L = p.getLatencySamples();
         double maxd = 0;
-        for (int i = 0; i + L < N; ++i) maxd = std::max (maxd, std::abs ((double) y[(size_t) (i + L)] - m.process (x[(size_t) i])));
+        int at = -1;
+        for (int i = 0; i + L < N; ++i)
+        {
+            const double dd = std::abs ((double) y[(size_t) (i + L)] - m.process (x[(size_t) i]));
+            if (dd > maxd) { maxd = dd; at = i; }
+        }
+        std::printf ("  (largest difference at %.4f s)\n", at / fs);
         std::printf ("plug-in (OS off) vs model, allowing for the %d-sample fixed latency: max abs diff %.2e  -> %s\n", L, maxd, maxd < 1e-4 ? "OK" : "FAIL");
         fails += maxd >= 1e-4;
         std::printf ("reported latency with OS off: %d samples\n", p.getLatencySamples());
@@ -109,10 +132,46 @@ int main()
                      (grR_linked < grR_dual - 3) ? "OK (linked compresses it, dual mono doesn't)" : "FAIL");
         fails += ! (grR_linked < grR_dual - 3);
     }
-    // 5) CPU: 20 s of stereo at 96 kHz per oversampling setting
+    // 5) Vintage RCA unit: 1 kHz at -10 dBFS with the input gain of the RCA capture (+12.47 dB) -> about 8.1 dB GR
+    {
+        RbaProcessor p; setP (p, "unit", 1); setP (p, "bump", 0); setP (p, "threshold", (12.47f + 14.f) / 0.93f);
+        setP (p, "oslive", 1); setP (p, "rendermode", 2);
+        std::vector<float> t ((size_t) fs); for (int i = 0; i < (int) fs; ++i) t[(size_t) i] = (float) (0.3162 * std::sin (2 * rba::kPi * 1000 * i / fs));
+        runPlugin (p, t, fs, 512);
+        const float g = p.grMeter.load();
+        std::printf ("RCA unit, -10 dBFS 1 kHz at the capture's input gain: GR %.2f dB (capture: 8.1) -> %s\n", g, std::abs (g - 8.1f) < 1.0f ? "OK" : "FAIL");
+        fails += std::abs (g - 8.1f) >= 1.0f;
+    }
+    // 6) every stage on (Clipper, Preamp Stereo, 3D bump, M/S, both units): finite output, sensible level, L != R
+    for (int u = 0; u <= 1; ++u)
+    {
+        RbaProcessor p; setP (p, "unit", (float) u); setP (p, "threshold", 25.f); setP (p, "clip", 1); setP (p, "crush", 30.f);
+        setP (p, "pre", 1); setP (p, "predrive", 20.f); setP (p, "prelines", 1); setP (p, "threed", 1); setP (p, "bump", 2);
+        setP (p, "msmode", 1); setP (p, "oslive", 2); setP (p, "rendermode", 2);
+        p.setPlayConfigDetails (2, 2, fs, 512); p.prepareToPlay (fs, 512);
+        juce::AudioBuffer<float> b (2, 512); juce::MidiBuffer midi; juce::Random rnd (3); bool finite = true; double e = 0, d = 0;
+        for (int blk = 0; blk < 400; ++blk)
+        {
+            for (int k = 0; k < 512; ++k) { const float v = 0.4f * (rnd.nextFloat() * 2 - 1); b.setSample (0, k, v); b.setSample (1, k, v); }
+            p.processBlock (b, midi);
+            for (int k = 0; k < 512; ++k)
+            {
+                const float l = b.getSample (0, k), r = b.getSample (1, k);
+                finite = finite && std::isfinite (l) && std::isfinite (r) && std::abs (l) < 4.f;
+                if (blk > 100) { e += l * l; d += (l - r) * (l - r); }
+            }
+        }
+        const double lvl = 10 * std::log10 (e / (300.0 * 512)), side = 10 * std::log10 (d / e + 1e-30);
+        const bool ok = finite && lvl > -30 && lvl < 0 && side > -60 && side < -10;
+        std::printf ("all stages on, unit %s: finite %s, level %.1f dBFS, L-R difference %.1f dB below the signal -> %s\n",
+                     u ? "RCA" : "El Rey", finite ? "yes" : "NO", lvl, -side, ok ? "OK" : "FAIL");
+        fails += ! ok;
+    }
+    // 7) CPU: 20 s of stereo at 96 kHz per oversampling setting
     for (int os = 0; os <= 2; ++os)
     {
         RbaProcessor p; setP (p, "threshold", 25.4f); setP (p, "oslive", (float) os); setP (p, "rendermode", 2);
+        setP (p, "clip", 1); setP (p, "pre", 1); setP (p, "prelines", 1);
         p.setPlayConfigDetails (2, 2, fs, 512); p.prepareToPlay (fs, 512);
         juce::AudioBuffer<float> b (2, 512); juce::MidiBuffer midi; juce::Random rnd (1);
         const int blocks = (int) (20 * fs / 512);
@@ -123,7 +182,7 @@ int main()
             p.processBlock (b, midi);
         }
         const double ms = juce::Time::getMillisecondCounterHiRes() - t0;
-        std::printf ("CPU, stereo 96 kHz, oversampling %dx: %.2f%% of one core (20 s of audio in %.0f ms)\n", 1 << os, 100.0 * ms / 20000.0, ms);
+        std::printf ("CPU (El Rey + Clipper + Preamp), stereo 96 kHz, oversampling %dx: %.2f%% of one core (20 s of audio in %.0f ms)\n", 1 << os, 100.0 * ms / 20000.0, ms);
     }
     std::printf (fails ? "\n%d FAILED\n" : "\nALL OK\n", fails);
     return fails;

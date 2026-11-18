@@ -2,6 +2,7 @@
 // checks it against the core model, the fixed latency across oversampling factors, and dry/wet.
 #include "../Source/PluginProcessor.h"
 #include "../Source/UnitElRey.h"
+#include "../Source/UnitRca.h"
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
@@ -134,7 +135,8 @@ int main()
     }
     // 5) Vintage RCA unit: 1 kHz at -10 dBFS with the input gain of the RCA capture (+12.47 dB) -> about 8.1 dB GR
     {
-        RbaProcessor p; setP (p, "unit", 1); setP (p, "bump", 0); setP (p, "threshold", (12.47f + 14.f) / 0.93f);
+        float thr = 0; for (float t = 0; t <= 40.f; t += 0.01f) if (rba::rcaInputGainDb (t) <= 12.47) thr = t;   // knob position for +12.47 dB
+        RbaProcessor p; setP (p, "unit", 1); setP (p, "bump", 0); setP (p, "threshold", thr);
         setP (p, "oslive", 1); setP (p, "rendermode", 2);
         std::vector<float> t ((size_t) fs); for (int i = 0; i < (int) fs; ++i) t[(size_t) i] = (float) (0.3162 * std::sin (2 * rba::kPi * 1000 * i / fs));
         runPlugin (p, t, fs, 512);

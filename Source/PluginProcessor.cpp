@@ -201,7 +201,7 @@ void RbaProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuf
     const bool dual     = juce::roundToInt (p[pRcaRel]->load()) == 1;
     const double rcaFilt = p[pRcaFilter]->load() >= 100.f ? p[pRcaFilter]->load() : 0.0;
     const auto rcaU = rba::makeRca();
-    const double rcaGdb = rcaU.inA + rcaU.inB * s.threshold;
+    const double rcaGdb = rba::rcaInputGainDb (s.threshold);      // matched to the El Rey unit
     const double rcaG = std::pow (10.0, rcaGdb / 20.0), rcaInv = 1.0 / rcaG;
     const double preDriveDb = p[pPreDrive]->load();
     const auto preU = rba::makePre();

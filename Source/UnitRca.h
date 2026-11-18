@@ -15,6 +15,19 @@ inline RcaUnit makeRca()
     u.inA = -14.0; u.inB = 0.93;      // Threshold 0..40 -> input gain, as the Nebula Input knob measured
     return u;
 }
+// Threshold knob (0..40) -> RCA input gain (dB), matched to the El Rey unit: at every Threshold the RCA
+// gives the same average gain reduction as El Rey on a drum loop and on drums + noise (fit/match_thr.py),
+// so switching units keeps roughly the same amount of compression.
+inline double rcaInputGainDb (double threshold)
+{
+    static const double T[] = { 0, 10, 15, 20, 25, 30, 35, 40 };
+    static const double G[] = { -4.979, -1.679, -0.329, 1.399, 4.022, 7.668, 11.517, 14.948 };
+    constexpr int n = (int) (sizeof (T) / sizeof (T[0]));
+    if (threshold <= T[0]) return G[0] + (threshold - T[0]) * (G[1] - G[0]) / (T[1] - T[0]);
+    for (int i = 1; i < n; ++i)
+        if (threshold <= T[i]) return G[i - 1] + (threshold - T[i - 1]) * (G[i] - G[i - 1]) / (T[i] - T[i - 1]);
+    return G[n - 1] + (threshold - T[n - 1]) * (G[n - 1] - G[n - 2]) / (T[n - 1] - T[n - 2]);
+}
 inline ClipUnit makeClip()
 {
     ClipUnit c; c.O = 22.046044; c.p = 1.8808637; c.s = 1; c.gamma = 1.7619359; c.fc = 574.25496;

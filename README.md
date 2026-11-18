@@ -1,4 +1,4 @@
-# RBA-6A v0.2 (test build)
+# RBA-6A v0.2.1 (test build)
 
 A light vari-mu compressor with two units:
 - **El Rey**: modelled on captures of Acustica Audio's El Rey 2. Soft knee, smooth RMS compression, Attack 1–3, Release 1–5.
@@ -19,6 +19,9 @@ A light vari-mu compressor with two units:
   - Live Off/2x/4x/8x (8x only up to 48 kHz, 4x up to 96 kHz).
   - Render OS, and Use render OS: Auto (only while rendering) / Always / Never.
   - The latency is fixed, so switching never shifts the timing.
+
+## What changed in v0.2.1
+- **Threshold now means the same on both units.** The Vintage RCA's Threshold scale is matched to El Rey: at any setting, both give about the same average gain reduction on drums and full mixes. Switching units keeps the amount of compression and changes only the character.
 
 ## What changed since v0.1
 - El Rey attack and release now match El Rey 2 at every setting (the default attack was about 2× too fast).

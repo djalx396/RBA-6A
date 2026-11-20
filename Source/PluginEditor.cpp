@@ -158,6 +158,7 @@ RbaEditor::RbaEditor (RbaProcessor& p)
       osSeg (P (ID::oslive), { "Off", "2x", "4x", "8x" }),
       renderOsSeg (P (ID::osrender), { "Off", "2x", "4x", "8x" }),
       renderModeSeg (P (ID::rendermode), { "Auto", "Always", "Never" }),
+      rangeSeg (P (ID::rcahot), { "Normal", "+8" }),
       drive (p.apvts, ID::input, "Drive", u8 ("\xe2\x88\x92" "18 \xc2\xb7 +18")),
       threshold (p.apvts, ID::threshold, "Threshold", u8 ("0 \xc2\xb7 40")),
       attack (p.apvts, ID::attack, "Attack", u8 ("1 \xc2\xb7 2 \xc2\xb7 3")),
@@ -173,11 +174,12 @@ RbaEditor::RbaEditor (RbaProcessor& p)
 {
     setLookAndFeel (&look);
     for (auto* c : std::initializer_list<Component*> { &unitSeg, &powerSeg, &bumpSeg, &detSeg, &modeSeg, &rcaRelSeg, &clipSeg,
-             &preSeg, &linesSeg, &threeDSeg, &osSeg, &renderOsSeg, &renderModeSeg, &drive, &threshold, &attack, &release,
+             &preSeg, &linesSeg, &threeDSeg, &osSeg, &renderOsSeg, &renderModeSeg, &rangeSeg, &drive, &threshold, &attack, &release,
              &filter, &rcaFilter, &balance, &crush, &clipMakeup, &preDrive, &makeup, &mix, &gr })
         addAndMakeVisible (c);
 
     attack.isEnabledFn = [this] { return ! isRca(); };
+    rangeSeg.isEnabledFn = [this] { return isRca(); };
     attack.valueText = [this] { return isRca() ? String ("fixed") : P (ID::attack).getCurrentValueAsText(); };
     attack.scaleFn = [this] { return isRca() ? String ("RCA network") : u8 ("1 \xc2\xb7 2 \xc2\xb7 3"); };
     auto clipOn = [this] { return P (ID::clip).getValue() > 0.5f; };
@@ -256,6 +258,7 @@ void RbaEditor::paint (Graphics& g)
                       secInput.getX() + 14, bumpSeg.getBottom() + 6, secInput.getWidth() - 28, 30, Justification::topLeft, 2, 1.0f);
     textSpaced (g, "DETECTOR", { detSeg.getX(), detSeg.getY() - 20, 120, 16 }, Justification::centredLeft, 12.f, true, ui::label);
     textSpaced (g, "MODE", { modeSeg.getX(), modeSeg.getY() - 20, 120, 16 }, Justification::centredLeft, 12.f, true, ui::label);
+    textSpaced (g, "RCA RANGE", { rangeSeg.getX(), rangeSeg.getY() - 20, 136, 16 }, Justification::centredLeft, 12.f, true, rca ? ui::label : ui::off);
     if (rca)
     {
         textSpaced (g, "RELEASE", { rcaRelArea.getX(), rcaRelArea.getY(), rcaRelArea.getWidth(), 14 }, Justification::centred, 12.f, true, ui::label);
@@ -317,8 +320,9 @@ void RbaEditor::resized()
 
     // compressor
     gr.setBounds (secComp.getX() + 14, top + 44, 300, 150);
-    detSeg.setBounds (secComp.getX() + 326, top + 74, 136, 36);
-    modeSeg.setBounds (secComp.getX() + 326, top + 144, 136, 36);
+    detSeg.setBounds (secComp.getX() + 326, top + 62, 136, 32);
+    modeSeg.setBounds (secComp.getX() + 326, top + 118, 136, 32);
+    rangeSeg.setBounds (secComp.getX() + 326, top + 174, 136, 32);
     const int ky = top + 222, kx = secComp.getX() + 14, kw = (secComp.getWidth() - 28) / 5;
     threshold.setBounds (kx, ky, kw, 130);
     attack.setBounds (kx + kw, ky, kw, 130);

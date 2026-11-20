@@ -144,6 +144,20 @@ int main()
         std::printf ("RCA unit, -10 dBFS 1 kHz at the capture's input gain: GR %.2f dB (capture: 8.1) -> %s\n", g, std::abs (g - 8.1f) < 1.0f ? "OK" : "FAIL");
         fails += std::abs (g - 8.1f) >= 1.0f;
     }
+    // 5b) RCA Range +8 dB: same knob, 8 dB more drive into the limiter -> clearly more GR
+    {
+        double grs[2];
+        for (int h = 0; h <= 1; ++h)
+        {
+            RbaProcessor p; setP (p, "unit", 1); setP (p, "bump", 0); setP (p, "threshold", 25.f); setP (p, "rcahot", (float) h);
+            setP (p, "oslive", 1); setP (p, "rendermode", 2);
+            std::vector<float> t ((size_t) fs); for (int i = 0; i < (int) fs; ++i) t[(size_t) i] = (float) (0.3162 * std::sin (2 * rba::kPi * 1000 * i / fs));
+            runPlugin (p, t, fs, 512); grs[h] = p.grMeter.load();
+        }
+        const bool ok = grs[1] > grs[0] + 5.0;
+        std::printf ("RCA Range Normal vs +8 dB at Threshold 25, -10 dBFS: GR %.2f vs %.2f dB -> %s\n", grs[0], grs[1], ok ? "OK" : "FAIL");
+        fails += ! ok;
+    }
     // 6) every stage on (Clipper, Preamp Stereo, 3D bump, M/S, both units): finite output, sensible level, L != R
     for (int u = 0; u <= 1; ++u)
     {

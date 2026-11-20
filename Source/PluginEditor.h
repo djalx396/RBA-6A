@@ -74,7 +74,7 @@ private:
     RbaLook look;
 
     Segmented unitSeg, powerSeg, bumpSeg, detSeg, modeSeg, rcaRelSeg, clipSeg, preSeg, linesSeg, threeDSeg,
-              osSeg, renderOsSeg, renderModeSeg;
+              osSeg, renderOsSeg, renderModeSeg, rangeSeg;
     Knob drive, threshold, attack, release, filter, rcaFilter, balance, crush, clipMakeup, preDrive, makeup, mix;
     GrMeter gr;
     float grSmooth = 0.f, pkSmooth[2] { 0.f, 0.f };

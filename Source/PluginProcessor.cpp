@@ -37,6 +37,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout RbaProcessor::createLayout()
     f (ID::attack, "Attack (El Rey)", 1.f, 3.f, 0.01f, 2.f, [] (float x, int) { return juce::String (x, 2); });
     f (ID::release, "Release (El Rey)", 1.f, 5.f, 0.01f, 3.f, [] (float x, int) { return juce::String (x, 2); });
     c (ID::rcarel, "Release (RCA)", { "Single", "Dual" }, 0);
+    c (ID::rcahot, "Range (RCA)", { "Normal", "+8 dB" }, 0);
     f (ID::filter, "SC Filter (El Rey)", 0.f, 250.f, 0.1f, 0.f,
        [] (float x, int) { return x < 1.f ? juce::String ("Off") : juce::String (juce::roundToInt (x)) + " Hz"; });
     f (ID::rcafilter, "SC Filter (RCA)", 0.f, 500.f, 0.1f, 0.f,
@@ -67,7 +68,7 @@ RbaProcessor::RbaProcessor()
 {
     const juce::String ids[pCount] = { ID::unit, ID::power, ID::input, ID::bump, ID::threshold, ID::attack, ID::release,
         ID::rcarel, ID::filter, ID::rcafilter, ID::balance, ID::link, ID::msmode, ID::clip, ID::crush, ID::clipmakeup,
-        ID::pre, ID::predrive, ID::prelines, ID::threed, ID::makeup, ID::mix, ID::oslive, ID::osrender, ID::rendermode };
+        ID::pre, ID::predrive, ID::prelines, ID::threed, ID::makeup, ID::mix, ID::oslive, ID::osrender, ID::rendermode, ID::rcahot };
     for (int i = 0; i < pCount; ++i) p[i] = apvts.getRawParameterValue (ids[i]);
 }
 
@@ -201,7 +202,8 @@ void RbaProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuf
     const bool dual     = juce::roundToInt (p[pRcaRel]->load()) == 1;
     const double rcaFilt = p[pRcaFilter]->load() >= 100.f ? p[pRcaFilter]->load() : 0.0;
     const auto rcaU = rba::makeRca();
-    const double rcaGdb = rba::rcaInputGainDb (s.threshold);      // matched to the El Rey unit
+    // matched to the El Rey unit; Range +8 dB drives the limiter 8 dB harder (the v0.2 range at the top of the knob)
+    const double rcaGdb = rba::rcaInputGainDb (s.threshold) + (juce::roundToInt (p[pRcaHot]->load()) == 1 ? 8.0 : 0.0);
     const double rcaG = std::pow (10.0, rcaGdb / 20.0), rcaInv = 1.0 / rcaG;
     const double preDriveDb = p[pPreDrive]->load();
     const auto preU = rba::makePre();

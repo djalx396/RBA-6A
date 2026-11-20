@@ -6,7 +6,7 @@
 namespace ID
 {
     static const juce::String unit { "unit" }, power { "power" }, input { "input" }, bump { "bump" },
-        threshold { "threshold" }, attack { "attack" }, release { "release" }, rcarel { "rcarel" },
+        threshold { "threshold" }, rcahot { "rcahot" }, attack { "attack" }, release { "release" }, rcarel { "rcarel" },
         filter { "filter" }, rcafilter { "rcafilter" }, balance { "balance" }, link { "link" }, msmode { "msmode" },
         clip { "clip" }, crush { "crush" }, clipmakeup { "clipmakeup" },
         pre { "pre" }, predrive { "predrive" }, prelines { "prelines" }, threed { "threed" },
@@ -56,7 +56,7 @@ public:
 
     enum PIdx { pUnit, pPower, pInput, pBump, pThreshold, pAttack, pRelease, pRcaRel, pFilter, pRcaFilter, pBalance,
                 pLink, pMs, pClip, pCrush, pClipMk, pPre, pPreDrive, pPreLines, p3D, pMakeup, pMix,
-                pOsLive, pOsRender, pRenderMode, pCount };
+                pOsLive, pOsRender, pRenderMode, pRcaHot, pCount };
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();

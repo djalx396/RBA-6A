@@ -31,13 +31,30 @@ private:
     juce::RangedAudioParameter& param; juce::StringArray labels; juce::Array<int> values; int visibleCount = -1;
 };
 
+// one button with an LED: lit = on. Bound to a bool or choice parameter (onIndex / offIndex).
+class LitToggle : public juce::Component, private juce::Timer
+{
+public:
+    LitToggle (juce::RangedAudioParameter& p, juce::String textOn, juce::String textOff, int onIndex = 1, int offIndex = 0);
+    void paint (juce::Graphics&) override;
+    void mouseUp (const juce::MouseEvent&) override;
+    bool isOn() const;
+private:
+    void timerCallback() override { repaint(); }
+    juce::RangedAudioParameter& param; juce::String textOn, textOff; int onIndex, offIndex;
+};
+
 class Knob : public juce::Component, private juce::Timer
 {
 public:
     Knob (juce::AudioProcessorValueTreeState&, const juce::String& id, const juce::String& title, const juce::String& scale, int size = 56);
     std::function<juce::String()> valueText;  // overrides the parameter's own text
     std::function<juce::String()> scaleFn;    // overrides the scale line
+    std::function<bool()> showEnds;           // draw SLOW (left) and FAST (right) under the scale
     std::function<bool()> isEnabledFn;
+    // hardware style: scale numbers around the dial, value and name underneath
+    bool hardware = false;
+    std::function<juce::StringArray()> ticksFn;
     void resized() override;
     void paint (juce::Graphics&) override;
 private:
@@ -73,8 +90,9 @@ private:
     RbaProcessor& proc;
     RbaLook look;
 
-    Segmented unitSeg, powerSeg, bumpSeg, detSeg, modeSeg, rcaRelSeg, clipSeg, preSeg, linesSeg, threeDSeg,
+    Segmented unitSeg, bumpSeg, modeSeg, rcaRelSeg, linesSeg, threeDSeg,
               osSeg, renderOsSeg, renderModeSeg, rangeSeg;
+    LitToggle powerTog, detTog, clipTog, preTog;
     Knob drive, threshold, attack, release, filter, rcaFilter, balance, crush, clipMakeup, preDrive, makeup, mix;
     GrMeter gr;
     float grSmooth = 0.f, pkSmooth[2] { 0.f, 0.f };

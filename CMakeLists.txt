@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(RBA6A VERSION 0.2.2)
+project(RBA6A VERSION 0.2.4)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -47,7 +47,8 @@ target_compile_definitions(RBA6A PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0
-    JUCE_DISPLAY_SPLASH_SCREEN=0)
+    JUCE_DISPLAY_SPLASH_SCREEN=0
+    RBA_VERSION="${PROJECT_VERSION}")
 
 target_link_libraries(RBA6A
     PRIVATE juce::juce_audio_utils juce::juce_audio_processors juce::juce_dsp
@@ -59,7 +60,7 @@ if(RBA_BUILD_TESTS)
     juce_add_console_app(RbaPluginTest PRODUCT_NAME "RbaPluginTest")
     target_sources(RbaPluginTest PRIVATE tests/plugin_test.cpp Source/PluginProcessor.cpp Source/PluginEditor.cpp)
     target_compile_definitions(RbaPluginTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="RBA-6A"
-        JucePlugin_Build_Standalone=0)
+        JucePlugin_Build_Standalone=0 RBA_VERSION="${PROJECT_VERSION}")
     target_link_libraries(RbaPluginTest PRIVATE juce::juce_audio_utils juce::juce_audio_processors juce::juce_dsp
         juce::juce_recommended_config_flags)
 endif()

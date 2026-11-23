@@ -34,8 +34,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout RbaProcessor::createLayout()
     f (ID::input, "Drive", -18.f, 18.f, 0.01f, 0.f, db);
     c (ID::bump, "Bump", { "Off", "Pre", "Post" }, 1);
     f (ID::threshold, "Threshold", 0.f, 40.f, 0.01f, 20.f, one);
-    f (ID::attack, "Attack (El Rey)", 1.f, 3.f, 0.01f, 2.f, [] (float x, int) { return juce::String (x, 2); });
-    f (ID::release, "Release (El Rey)", 1.f, 5.f, 0.01f, 3.f, [] (float x, int) { return juce::String (x, 2); });
+    f (ID::attack, "Attack (El Rey)", 1.f, 3.f, 0.01f, 2.f,
+       [] (float x, int) { return juce::String (x, 2) + (x < 1.25f ? " slow" : (x > 2.75f ? " fast" : "")); });
+    f (ID::release, "Release (El Rey)", 1.f, 5.f, 0.01f, 3.f,
+       [] (float x, int) { return juce::String (x, 2) + (x < 1.5f ? " slow" : (x > 4.5f ? " fast" : "")); });
     c (ID::rcarel, "Release (RCA)", { "Single", "Dual" }, 0);
     c (ID::rcahot, "Range (RCA)", { "Normal", "+8 dB" }, 0);
     f (ID::filter, "SC Filter (El Rey)", 0.f, 250.f, 0.1f, 0.f,

@@ -1,4 +1,4 @@
-# RBA-6A v0.2.2 (test build)
+# RBA-6A v0.2.4 (test build)
 
 A light vari-mu compressor with two units:
 - **El Rey**: modelled on captures of Acustica Audio's El Rey 2. Soft knee, smooth RMS compression, Attack 1–3, Release 1–5.
@@ -19,6 +19,19 @@ A light vari-mu compressor with two units:
   - Live Off/2x/4x/8x (8x only up to 48 kHz, 4x up to 96 kHz).
   - Render OS, and Use render OS: Auto (only while rendering) / Always / Never.
   - The latency is fixed, so switching never shifts the timing.
+
+## What changed in v0.2.4
+GUI only, from Chris's design canvas. No change to the sound; existing sessions load as before.
+- Version number shown under the RBA-6A title (taken from the build).
+- Compressor knobs in hardware style: scale numbers around each dial, value and name underneath. Names shortened to THR, ATT, REL, SC HPF, P-P.
+  - ATT 1/2/3 and REL 1-5 with SLOW under the left end and FAST under the right end (El Rey).
+  - THR 0-10-20-30-40, SC HPF OFF-125-250 (El Rey) / OFF-300-500 (RCA), P-P -100-0-+100.
+- Power, Detector (LINK ON / LINK OFF), Clipper and Preamp are now single lit buttons: amber LED when on, dark when off. Click to toggle.
+
+## What changed in v0.2.3
+- El Rey Attack and Release knobs are now marked SLOW at the left end of their travel and FAST at the right, like the hardware. The 1-3 and 1-5 numbers stay.
+- The host's parameter display adds "slow" / "fast" near the ends of each knob.
+- No change to the sound.
 
 ## What changed in v0.2.2
 - **RCA Range: Normal / +8** (in the Compressor section, active on the Vintage RCA unit). +8 drives the limiter 8 dB harder at any Threshold setting. At the top of the knob that's the heavier range v0.2 had.

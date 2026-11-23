@@ -68,6 +68,53 @@ void Segmented::mouseUp (const MouseEvent& e)
     repaint();
 }
 
+#ifndef RBA_VERSION
+ #define RBA_VERSION "dev"
+#endif
+
+// ------------------------------------------------------------------------------ lit toggle
+LitToggle::LitToggle (RangedAudioParameter& p, String on, String off, int onI, int offI)
+    : param (p), textOn (on), textOff (off), onIndex (onI), offIndex (offI)
+{
+    startTimerHz (15);
+    setMouseCursor (MouseCursor::PointingHandCursor);
+}
+bool LitToggle::isOn() const { return roundToInt (param.convertFrom0to1 (param.getValue())) == onIndex; }
+void LitToggle::paint (Graphics& g)
+{
+    const bool on = isOn();
+    auto r = getLocalBounds().toFloat().reduced (0.5f);
+    if (on) { g.setColour (ui::knob); g.fillRoundedRectangle (r, 6.f); }
+    g.setColour (on ? ui::accent : Colour (0xff4a443d)); g.drawRoundedRectangle (r, 6.f, 1.f);
+    const String t = on ? textOn : textOff;
+    auto f = font (14.f, true).withExtraKerningFactor (0.14f);
+    const float tw = GlyphArrangement::getStringWidth (f, t);
+    const float total = 10.f + 10.f + tw;
+    const float x0 = r.getCentreX() - total / 2.f, cy = r.getCentreY();
+    auto led = Rectangle<float> (x0, cy - 5.f, 10.f, 10.f);
+    if (on)
+    {
+        g.setColour (ui::accent.withAlpha (0.25f)); g.fillEllipse (led.expanded (4.f));
+        g.setColour (ui::accent.withAlpha (0.45f)); g.fillEllipse (led.expanded (2.f));
+        g.setColour (ui::accent); g.fillEllipse (led);
+    }
+    else
+    {
+        g.setColour (ui::border); g.fillEllipse (led);
+        g.setColour (ui::knobEdge); g.drawEllipse (led.reduced (0.5f), 1.f);
+    }
+    g.setColour (on ? ui::cream : ui::sub); g.setFont (f);
+    g.drawText (t, Rectangle<float> (x0 + 20.f, r.getY(), tw + 4.f, r.getHeight()), Justification::centredLeft, false);
+}
+void LitToggle::mouseUp (const MouseEvent& e)
+{
+    if (! getLocalBounds().contains (e.getPosition())) return;
+    param.beginChangeGesture();
+    param.setValueNotifyingHost (param.convertTo0to1 ((float) (isOn() ? offIndex : onIndex)));
+    param.endChangeGesture();
+    repaint();
+}
+
 // ------------------------------------------------------------------------------------ knob
 Knob::Knob (AudioProcessorValueTreeState& s, const String& id, const String& t, const String& sc, int sz)
     : title (t), scale (sc), size (sz)
@@ -82,6 +129,31 @@ Knob::Knob (AudioProcessorValueTreeState& s, const String& id, const String& t, 
     startTimerHz (15);
 }
 void Knob::resized() { slider.setBounds ((getWidth() - size) / 2, 18, size, size); }
+
+// hardware-style geometry (matches the design canvas): dial centre at (w/2, 46), numbers on a 39 px radius
+static void drawHardwareKnob (Graphics& g, int w, int size, const StringArray& ticks, bool ends, bool en,
+                              const String& value, const String& title)
+{
+    const float cx = (float) w / 2.f, cy = 18.f + (float) size / 2.f, r = (float) size / 2.f + 11.f;
+    const int n = ticks.size();
+    g.setFont (font (11.f));
+    g.setColour (Colour (0xffb5ab9b).withMultipliedAlpha (en ? 1.f : 0.4f));
+    for (int i = 0; i < n; ++i)
+    {
+        const float a = degreesToRadians (n > 1 ? -135.f + 270.f * (float) i / (float) (n - 1) : 0.f);
+        const float x = cx + r * std::sin (a), y = cy - r * std::cos (a);
+        g.drawText (ticks[i], Rectangle<float> (x - 20.f, y - 7.f, 40.f, 14.f), Justification::centred, false);
+    }
+    if (ends)
+    {
+        const float dx = r * MathConstants<float>::sqrt2 / 2.f;
+        textSpaced (g, "SLOW", Rectangle<float> (cx - dx - 20.f, 82.f, 40.f, 13.f).toNearestInt(), Justification::centred, 10.f, true, ui::sub);
+        textSpaced (g, "FAST", Rectangle<float> (cx + dx - 20.f, 82.f, 40.f, 13.f).toNearestInt(), Justification::centred, 10.f, true, ui::sub);
+    }
+    g.setColour (ui::cream); g.setFont (Font (FontOptions (Font::getDefaultMonospacedFontName(), 12.f, Font::plain)));
+    g.drawText (value, 0, 100, w, 16, Justification::centred, false);
+    textSpaced (g, title.toUpperCase(), { 0, 118, w, 15 }, Justification::centred, 12.f, true, ui::label);
+}
 void Knob::timerCallback()
 {
     const bool en = ! isEnabledFn || isEnabledFn();
@@ -90,6 +162,12 @@ void Knob::timerCallback()
 }
 void Knob::paint (Graphics& g)
 {
+    if (hardware)
+    {
+        drawHardwareKnob (g, getWidth(), size, ticksFn ? ticksFn() : StringArray(), showEnds && showEnds(),
+                          ! isEnabledFn || isEnabledFn(), valueText ? valueText() : param->getCurrentValueAsText(), title);
+        return;
+    }
     textSpaced (g, title.toUpperCase(), { 0, 0, getWidth(), 14 }, Justification::centred, 12.f, true, ui::label);
     const String v = valueText ? valueText() : param->getCurrentValueAsText();
     g.setColour (ui::cream); g.setFont (Font (FontOptions (Font::getDefaultMonospacedFontName(), 12.f, Font::plain)));
@@ -99,6 +177,14 @@ void Knob::paint (Graphics& g)
     {
         g.setColour (ui::dim); g.setFont (font (11.f));
         g.drawFittedText (sc, 0, 37 + size, getWidth(), 14, Justification::centred, 1, 0.8f);
+    }
+    if (showEnds && showEnds())
+    {
+        // like the hardware: printed at the two ends of the knob's travel
+        const int cx = getWidth() / 2, y = 18 + size - 6;
+        g.setColour (ui::sub); g.setFont (font (9.5f).boldened());
+        g.drawText ("SLOW", cx - size / 2 - 30, y, 30 + size / 2 - 16, 12, Justification::centredRight, false);
+        g.drawText ("FAST", cx + 16, y, 30 + size / 2 - 16, 12, Justification::centredLeft, false);
     }
 }
 
@@ -146,26 +232,26 @@ void GrMeter::paint (Graphics& g)
 RbaEditor::RbaEditor (RbaProcessor& p)
     : AudioProcessorEditor (&p), proc (p),
       unitSeg (P (ID::unit), { "El Rey", "Vintage RCA" }),
-      powerSeg (P (ID::power), { "On", "Off" }, { 1, 0 }),
       bumpSeg (P (ID::bump), { "Off", "Pre", "Post" }),
-      detSeg (P (ID::link), { "Linked", "Dual mono" }),
       modeSeg (P (ID::msmode), { "L / R", "M / S" }),
       rcaRelSeg (P (ID::rcarel), { "Single", "Dual" }),
-      clipSeg (P (ID::clip), { "On", "Off" }, { 1, 0 }),
-      preSeg (P (ID::pre), { "On", "Off" }, { 1, 0 }),
       linesSeg (P (ID::prelines), { "Mono", "Stereo" }),
       threeDSeg (P (ID::threed), { "Off", "On" }, { 0, 1 }),
       osSeg (P (ID::oslive), { "Off", "2x", "4x", "8x" }),
       renderOsSeg (P (ID::osrender), { "Off", "2x", "4x", "8x" }),
       renderModeSeg (P (ID::rendermode), { "Auto", "Always", "Never" }),
       rangeSeg (P (ID::rcahot), { "Normal", "+8" }),
+      powerTog (P (ID::power), "ON", "OFF"),
+      detTog (P (ID::link), "LINK ON", "LINK OFF", 0, 1),
+      clipTog (P (ID::clip), "CLIPPER ON", "CLIPPER OFF"),
+      preTog (P (ID::pre), "PREAMP ON", "PREAMP OFF"),
       drive (p.apvts, ID::input, "Drive", u8 ("\xe2\x88\x92" "18 \xc2\xb7 +18")),
-      threshold (p.apvts, ID::threshold, "Threshold", u8 ("0 \xc2\xb7 40")),
-      attack (p.apvts, ID::attack, "Attack", u8 ("1 \xc2\xb7 2 \xc2\xb7 3")),
-      release (p.apvts, ID::release, "Release", u8 ("1 \xc2\xb7 2 \xc2\xb7 3 \xc2\xb7 4 \xc2\xb7 5")),
-      filter (p.apvts, ID::filter, "SC Filter", u8 ("OFF \xc2\xb7 250 Hz")),
-      rcaFilter (p.apvts, ID::rcafilter, "SC Filter", u8 ("OFF \xc2\xb7 100\xe2\x80\x93" "500 Hz")),
-      balance (p.apvts, ID::balance, "P-P Balance", u8 ("\xe2\x88\x92" "100 \xc2\xb7 +100")),
+      threshold (p.apvts, ID::threshold, "THR", u8 ("0 \xc2\xb7 40")),
+      attack (p.apvts, ID::attack, "ATT", u8 ("1 \xc2\xb7 2 \xc2\xb7 3")),
+      release (p.apvts, ID::release, "REL", u8 ("1 \xc2\xb7 2 \xc2\xb7 3 \xc2\xb7 4 \xc2\xb7 5")),
+      filter (p.apvts, ID::filter, "SC HPF", u8 ("OFF \xc2\xb7 250 Hz")),
+      rcaFilter (p.apvts, ID::rcafilter, "SC HPF", u8 ("OFF \xc2\xb7 100\xe2\x80\x93" "500 Hz")),
+      balance (p.apvts, ID::balance, "P-P", u8 ("\xe2\x88\x92" "100 \xc2\xb7 +100")),
       crush (p.apvts, ID::crush, "Crush", u8 ("0 \xc2\xb7 40")),
       clipMakeup (p.apvts, ID::clipmakeup, "Make Up", u8 ("0 \xc2\xb7 10 dB")),
       preDrive (p.apvts, ID::predrive, "Drive", u8 ("\xe2\x88\x92" "30 \xc2\xb7 +30")),
@@ -173,13 +259,22 @@ RbaEditor::RbaEditor (RbaProcessor& p)
       mix (p.apvts, ID::mix, "Dry/Wet", "", 44)
 {
     setLookAndFeel (&look);
-    for (auto* c : std::initializer_list<Component*> { &unitSeg, &powerSeg, &bumpSeg, &detSeg, &modeSeg, &rcaRelSeg, &clipSeg,
-             &preSeg, &linesSeg, &threeDSeg, &osSeg, &renderOsSeg, &renderModeSeg, &rangeSeg, &drive, &threshold, &attack, &release,
+    for (auto* c : std::initializer_list<Component*> { &unitSeg, &powerTog, &bumpSeg, &detTog, &modeSeg, &rcaRelSeg, &clipTog,
+             &preTog, &linesSeg, &threeDSeg, &osSeg, &renderOsSeg, &renderModeSeg, &rangeSeg, &drive, &threshold, &attack, &release,
              &filter, &rcaFilter, &balance, &crush, &clipMakeup, &preDrive, &makeup, &mix, &gr })
         addAndMakeVisible (c);
 
+    for (auto* k : { &threshold, &attack, &release, &filter, &rcaFilter, &balance }) k->hardware = true;
+    threshold.ticksFn = [] { return StringArray { "0", "10", "20", "30", "40" }; };
+    attack.ticksFn    = [this] { return isRca() ? StringArray() : StringArray { "1", "2", "3" }; };
+    release.ticksFn   = [] { return StringArray { "1", "2", "3", "4", "5" }; };
+    filter.ticksFn    = [] { return StringArray { "OFF", "125", "250" }; };
+    rcaFilter.ticksFn = [] { return StringArray { "OFF", "300", "500" }; };
+    balance.ticksFn   = [] { return StringArray { u8 ("\xe2\x88\x92" "100"), "0", "+100" }; };
     attack.isEnabledFn = [this] { return ! isRca(); };
     rangeSeg.isEnabledFn = [this] { return isRca(); };
+    attack.showEnds  = [this] { return ! isRca(); };
+    release.showEnds = [] { return true; };
     attack.valueText = [this] { return isRca() ? String ("fixed") : P (ID::attack).getCurrentValueAsText(); };
     attack.scaleFn = [this] { return isRca() ? String ("RCA network") : u8 ("1 \xc2\xb7 2 \xc2\xb7 3"); };
     auto clipOn = [this] { return P (ID::clip).getValue() > 0.5f; };
@@ -227,7 +322,9 @@ void RbaEditor::paint (Graphics& g)
     g.fillAll (ui::bg);
     // header
     g.setColour (ui::cream); g.setFont (font (40.f, true).withExtraKerningFactor (0.04f));
-    g.drawText ("RBA-6A", 24, 18, 170, 56, Justification::centredLeft, false);
+    g.drawText ("RBA-6A", 24, 14, 170, 44, Justification::centredLeft, false);
+    g.setColour (ui::dim); g.setFont (Font (FontOptions (Font::getDefaultMonospacedFontName(), 11.f, Font::plain)));
+    g.drawText ("v" RBA_VERSION, 26, 58, 120, 14, Justification::centredLeft, false);
     textSpaced (g, "VARI-MU LIMITING AMPLIFIER", { 190, 26, 360, 18 }, Justification::centredLeft, 13.f, true, ui::sub);
     const bool rca = isRca();
     textSpaced (g, rca ? "Vintage RCA  " + String::fromUTF8 ("\xc2\xb7") + "  hard-knee limiting  " + String::fromUTF8 ("\xc2\xb7") + "  single / dual release"
@@ -256,14 +353,12 @@ void RbaEditor::paint (Graphics& g)
     g.setColour (ui::dim); g.setFont (font (11.f));
     g.drawFittedText (bump == 0 ? "Bump off: flat" : (bump == 1 ? "Pre: the compressor hears the bump" : "Post: bump tone after the compressor"),
                       secInput.getX() + 14, bumpSeg.getBottom() + 6, secInput.getWidth() - 28, 30, Justification::topLeft, 2, 1.0f);
-    textSpaced (g, "DETECTOR", { detSeg.getX(), detSeg.getY() - 20, 120, 16 }, Justification::centredLeft, 12.f, true, ui::label);
+    textSpaced (g, "DETECTOR", { detTog.getX(), detTog.getY() - 20, 120, 16 }, Justification::centredLeft, 12.f, true, ui::label);
     textSpaced (g, "MODE", { modeSeg.getX(), modeSeg.getY() - 20, 120, 16 }, Justification::centredLeft, 12.f, true, ui::label);
     textSpaced (g, "RCA RANGE", { rangeSeg.getX(), rangeSeg.getY() - 20, 136, 16 }, Justification::centredLeft, 12.f, true, rca ? ui::label : ui::off);
     if (rca)
     {
-        textSpaced (g, "RELEASE", { rcaRelArea.getX(), rcaRelArea.getY(), rcaRelArea.getWidth(), 14 }, Justification::centred, 12.f, true, ui::label);
-        textSpaced (g, "SINGLE " + String::fromUTF8 ("\xc2\xb7") + " DUAL", { rcaRelArea.getX(), rcaRelSeg.getBottom() + 20, rcaRelArea.getWidth(), 14 },
-                    Justification::centred, 11.f, false, ui::dim);
+        textSpaced (g, "REL", { rcaRelArea.getX(), rcaRelArea.getY() + 118, rcaRelArea.getWidth(), 15 }, Justification::centred, 12.f, true, ui::label);
     }
     textSpaced (g, "LINES", { linesSeg.getX(), linesSeg.getY() - 20, 120, 16 }, Justification::centredLeft, 12.f, true, ui::label);
     textSpaced (g, "3D BUMP", { threeDSeg.getX(), threeDSeg.getY() - 20, 120, 16 }, Justification::centredLeft, 12.f, true, ui::label);
@@ -305,7 +400,7 @@ void RbaEditor::paint (Graphics& g)
 void RbaEditor::resized()
 {
     unitSeg.setBounds (640, 27, 280, 36);
-    powerSeg.setBounds (996, 27, 100, 36);
+    powerTog.setBounds (996, 27, 100, 36);
 
     const int top = 88, h = 372;
     secInput = { 24, top, 190, h };
@@ -320,26 +415,26 @@ void RbaEditor::resized()
 
     // compressor
     gr.setBounds (secComp.getX() + 14, top + 44, 300, 150);
-    detSeg.setBounds (secComp.getX() + 326, top + 62, 136, 32);
+    detTog.setBounds (secComp.getX() + 326, top + 62, 136, 32);
     modeSeg.setBounds (secComp.getX() + 326, top + 118, 136, 32);
     rangeSeg.setBounds (secComp.getX() + 326, top + 174, 136, 32);
     const int ky = top + 222, kx = secComp.getX() + 14, kw = (secComp.getWidth() - 28) / 5;
-    threshold.setBounds (kx, ky, kw, 130);
-    attack.setBounds (kx + kw, ky, kw, 130);
-    release.setBounds (kx + 2 * kw, ky, kw, 130);
-    rcaRelArea = { kx + 2 * kw, ky, kw, 130 };
-    rcaRelSeg.setBounds (kx + 2 * kw - 8, ky + 30, kw + 16, 36);
-    filter.setBounds (kx + 3 * kw, ky, kw, 130);
-    rcaFilter.setBounds (kx + 3 * kw, ky, kw, 130);
-    balance.setBounds (kx + 4 * kw, ky, kw, 130);
+    threshold.setBounds (kx, ky, kw, 136);
+    attack.setBounds (kx + kw, ky, kw, 136);
+    release.setBounds (kx + 2 * kw, ky, kw, 136);
+    rcaRelArea = { kx + 2 * kw, ky, kw, 136 };
+    rcaRelSeg.setBounds (kx + 2 * kw - 8, ky + 28, kw + 16, 36);
+    filter.setBounds (kx + 3 * kw, ky, kw, 136);
+    rcaFilter.setBounds (kx + 3 * kw, ky, kw, 136);
+    balance.setBounds (kx + 4 * kw, ky, kw, 136);
 
     // clipper
-    clipSeg.setBounds (secClip.getX() + 14, top + 44, secClip.getWidth() - 28, 36);
+    clipTog.setBounds (secClip.getX() + 14, top + 44, secClip.getWidth() - 28, 36);
     crush.setBounds (secClip.getX() + 42, top + 96, 84, 130);
     clipMakeup.setBounds (secClip.getX() + 42, top + 228, 84, 130);
 
     // preamp
-    preSeg.setBounds (secPre.getX() + 14, top + 44, secPre.getWidth() - 28, 36);
+    preTog.setBounds (secPre.getX() + 14, top + 44, secPre.getWidth() - 28, 36);
     preDrive.setBounds (secPre.getX() + 60, top + 92, 84, 112);
     linesSeg.setBounds (secPre.getX() + 14, top + 230, secPre.getWidth() - 28, 36);
     threeDSeg.setBounds (secPre.getX() + 14, top + 300, secPre.getWidth() - 28, 36);

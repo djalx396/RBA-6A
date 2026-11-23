@@ -1,4 +1,4 @@
-# RBA-6A v0.2.4 (test build)
+# RBA-6A v0.2.5 (test build)
 
 A light vari-mu compressor with two units:
 - **El Rey**: modelled on captures of Acustica Audio's El Rey 2. Soft knee, smooth RMS compression, Attack 1–3, Release 1–5.
@@ -19,6 +19,11 @@ A light vari-mu compressor with two units:
   - Live Off/2x/4x/8x (8x only up to 48 kHz, 4x up to 96 kHz).
   - Render OS, and Use render OS: Auto (only while rendering) / Always / Never.
   - The latency is fixed, so switching never shifts the timing.
+
+## What changed in v0.2.5
+- Fix: the plug-in now loads on older macOS / Intel Macs (minimum macOS 11.0). Up to v0.2.4 the build silently required the newest macOS, because the minimum-macOS setting came after `project()` in CMakeLists.txt and was ignored. Same fix as FreeLA2 v0.3.1.
+- The workflow also passes the minimum macOS and checks it after the build (fails if it is above 11.0).
+- Everything from v0.2.4 (GUI) is included. No change to the sound.
 
 ## What changed in v0.2.4
 GUI only, from Chris's design canvas. No change to the sound; existing sessions load as before.

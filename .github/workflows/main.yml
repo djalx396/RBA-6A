@@ -11,7 +11,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: "Configure (universal: Apple Silicon + Intel)"
-        run: cmake -B build -G Xcode -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+        run: cmake -B build -G Xcode -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
 
       - name: Build VST3 + AU
         run: cmake --build build --config Release --target RBA6A_VST3 RBA6A_AU -- -quiet
@@ -23,6 +23,20 @@ jobs:
 
       - name: Check architectures
         run: lipo -info "build/RBA6A_artefacts/Release/VST3/RBA-6A.vst3/Contents/MacOS/RBA-6A"
+
+      - name: Check minimum macOS (must be 11.0 or lower)
+        run: |
+          fail=0
+          for b in "build/RBA6A_artefacts/Release/VST3/RBA-6A.vst3" "build/RBA6A_artefacts/Release/AU/RBA-6A.component"; do
+            v=$(/usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" "$b/Contents/Info.plist" 2>/dev/null || echo none)
+            echo "$b  Info.plist minimum: $v"
+            case "$v" in 10.*|11|11.0) ;; *) fail=1 ;; esac
+            for m in $(otool -arch all -l "$b/Contents/MacOS/RBA-6A" | awk '/minos/ {print $2}'); do
+              echo "  binary minos: $m"
+              case "$m" in 10.*|11|11.0) ;; *) fail=1 ;; esac
+            done
+          done
+          exit $fail
 
       - name: Package
         run: |

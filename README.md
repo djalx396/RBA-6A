@@ -1,4 +1,4 @@
-# RBA-6A v0.2.5 (test build)
+# RBA-6A v0.2.6 (test build) - by 396
 
 A light vari-mu compressor with two units:
 - **El Rey**: modelled on captures of Acustica Audio's El Rey 2. Soft knee, smooth RMS compression, Attack 1–3, Release 1–5.
@@ -20,13 +20,31 @@ A light vari-mu compressor with two units:
   - Render OS, and Use render OS: Auto (only while rendering) / Always / Never.
   - The latency is fixed, so switching never shifts the timing.
 
+## What changed in v0.2.6
+- **FILTER: OFF / CLEAN / AIR** - staged ultrasonic band-limiting, the same module as FreeLA2 (`Source/FreeBandLimit.h`,
+  Airwindows Hypersonic sections, MIT licence). Works when the plug-in runs at 88.2 kHz or more inside
+  (always at 88.2/96 kHz; at 44.1/48 kHz with oversampling on). Order: D > Compressor > C > Clipper > B > Preamp > A.
+  - CLEAN (default): a complete 25 kHz filter (14th-order Butterworth) after the Compressor, the Clipper and the Preamp.
+  - AIR: an 8th-order 25 kHz Butterworth split in four: D (gentlest) before the Compressor, C after it, B after the
+    Clipper, A (most resonant) plus a complete Hypersonic after the Preamp. Each stage is driven a little darker; the air comes back at the end.
+  - OFF: no band-limiting (for null tests).
+- **PHASE: ANALOG / LINEAR** (`Source/PhaseAlign.h`, also from FreeLA2): ANALOG = analog-style filters (the top octave lags a little),
+  LINEAR = a correction filter removes the phase of the ultrasonic filters and the oversampling (pure delay in the audio band).
+- **Latency** is now fixed per PHASE, the same in every OVERSAMPLE x FILTER setting: at 96 kHz 32 samples (ANALOG), 120 (LINEAR).
+- **Dry/Wet**: the dry signal now goes through the same oversampling and filters as the wet, so they line up exactly
+  (it runs only while Dry/Wet is below 100 %).
+- **Developer: 396.** The plug-in now shows 396 as its maker (COMPANY_NAME, bundle id com.396.rba6a). The plug-in codes stay
+  the same, so existing sessions still find it.
+- Null vs El Rey 2 (drum loop, C08): FILTER OFF -21.2 dB, CLEAN LINEAR -21.3, AIR ANALOG -21.3, CLEAN ANALOG -17.8 (top-octave phase).
+- CPU (El Rey + Clipper + Preamp, stereo 96 kHz, one core): OFF 1x/2x/4x 6.9/12.8/24.3 %, AIR 8.1/15.8/30.0 %, CLEAN 8.8/16.7/31.6 %.
+
 ## What changed in v0.2.5
 - Fix: the plug-in now loads on older macOS / Intel Macs (minimum macOS 11.0). Up to v0.2.4 the build silently required the newest macOS, because the minimum-macOS setting came after `project()` in CMakeLists.txt and was ignored. Same fix as FreeLA2 v0.3.1.
 - The workflow also passes the minimum macOS and checks it after the build (fails if it is above 11.0).
 - Everything from v0.2.4 (GUI) is included. No change to the sound.
 
 ## What changed in v0.2.4
-GUI only, from Chris's design canvas. No change to the sound; existing sessions load as before.
+GUI only, from the design canvas. No change to the sound; existing sessions load as before.
 - Version number shown under the RBA-6A title (taken from the build).
 - Compressor knobs in hardware style: scale numbers around each dial, value and name underneath. Names shortened to THR, ATT, REL, SC HPF, P-P.
   - ATT 1/2/3 and REL 1-5 with SLOW under the left end and FAST under the right end (El Rey).

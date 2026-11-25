@@ -2,6 +2,8 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_dsp/juce_dsp.h>
 #include "RbaCore.h"
+#include "FreeBandLimit.h"
+#include "PhaseAlign.h"
 
 namespace ID
 {
@@ -10,7 +12,8 @@ namespace ID
         filter { "filter" }, rcafilter { "rcafilter" }, balance { "balance" }, link { "link" }, msmode { "msmode" },
         clip { "clip" }, crush { "crush" }, clipmakeup { "clipmakeup" },
         pre { "pre" }, predrive { "predrive" }, prelines { "prelines" }, threed { "threed" },
-        makeup { "makeup" }, mix { "mix" }, oslive { "oslive" }, osrender { "osrender" }, rendermode { "rendermode" };
+        makeup { "makeup" }, mix { "mix" }, oslive { "oslive" }, osrender { "osrender" }, rendermode { "rendermode" },
+        bandlimit { "bandlimit" }, phase { "phase" };
 }
 
 class RbaProcessor : public juce::AudioProcessor
@@ -56,7 +59,7 @@ public:
 
     enum PIdx { pUnit, pPower, pInput, pBump, pThreshold, pAttack, pRelease, pRcaRel, pFilter, pRcaFilter, pBalance,
                 pLink, pMs, pClip, pCrush, pClipMk, pPre, pPreDrive, pPreLines, p3D, pMakeup, pMix,
-                pOsLive, pOsRender, pRenderMode, pRcaHot, pCount };
+                pOsLive, pOsRender, pRenderMode, pRcaHot, pBandLimit, pPhase, pCount };
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
@@ -76,7 +79,19 @@ private:
         rba::BumpPath post[2];
         rba::Clipper clip[2];
         rba::PreDrive pre[2];
+        // ultrasonic band-limiting (FreeBandLimit), per mode OFF / CLEAN / AIR: slots D > Comp > C > Clipper > B > Preamp > A
+        fbl::BandLimit<4> bl[3][2], dbl[3][2];     // dbl: the same sections for the dry path
+        std::unique_ptr<juce::dsp::Oversampling<float>> dryOs;  // the dry signal takes the same linear path (for Dry/Wet)
+        // output alignment of the linear part (oversampling + band-limit), per phase (ANALOG / LINEAR) and mode
+        double tau[3] {};
+        std::vector<double> fir[2][3];
+        int pad[2][3] {};
     };
+    void measureLinear (OsSet&, int mode, std::vector<double>& h);
+    void updateLatency();
+    int fixedLat[2] { 0, 0 }, lastPhase = -1, lastMode = -1, blockSize = 512;
+    bool dryRunning = false;
+    pa::Fir outFir[2], dryFir[2];
     std::array<OsSet, 4> sets;
     int activeSet = 0, maxFactor = 8, fixedLatency = 0, numCh = 2;
     double fs = 48000;
@@ -99,7 +114,7 @@ private:
         }
         void clear() { std::fill (buf.begin(), buf.end(), 0.f); }
     };
-    Delay dryDelay[2], wetDelay[2];
+    Delay wetPadD[2], dryPadD[2], dryOne[2];
     juce::AudioBuffer<float> dryBuf;
     juce::SmoothedValue<float> makeupSm, mixSm;
 

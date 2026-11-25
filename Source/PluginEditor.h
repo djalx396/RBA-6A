@@ -91,7 +91,7 @@ private:
     RbaLook look;
 
     Segmented unitSeg, bumpSeg, modeSeg, rcaRelSeg, linesSeg, threeDSeg,
-              osSeg, renderOsSeg, renderModeSeg, rangeSeg;
+              osSeg, renderOsSeg, renderModeSeg, rangeSeg, filterSeg, phaseSeg;
     LitToggle powerTog, detTog, clipTog, preTog;
     Knob drive, threshold, attack, release, filter, rcaFilter, balance, crush, clipMakeup, preDrive, makeup, mix;
     GrMeter gr;

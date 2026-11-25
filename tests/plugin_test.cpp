@@ -5,8 +5,10 @@
 #include "../Source/UnitRca.h"
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <vector>
 #include <cmath>
+#include <complex>
 
 static std::vector<float> runPlugin (RbaProcessor& p, const std::vector<float>& x, double fs, int block)
 {
@@ -31,6 +33,28 @@ static void setP (RbaProcessor& p, const char* id, float plain)
 int main()
 {
     juce::ScopedJuceInitialiser_GUI init;
+    if (auto* spec = std::getenv ("RBA_RENDER"))         // render a raw float32 mono file through the plug-in and exit
+    {                                                    // spec file: "in <path>", "out <path>", "fs <rate>", then "<param id> <plain value>"
+        juce::StringArray lines; juce::File (spec).readLines (lines);
+        juce::String in, out; double fs = 96000; RbaProcessor p;
+        for (auto& l : lines)
+        {
+            auto t = juce::StringArray::fromTokens (l.trim(), " ", ""); if (t.size() < 2) continue;
+            if (t[0] == "in") in = t[1]; else if (t[0] == "out") out = t[1]; else if (t[0] == "fs") fs = t[1].getDoubleValue();
+            else if (p.apvts.getParameter (t[0]) != nullptr) setP (p, t[0].toRawUTF8(), t[1].getFloatValue());
+            else { std::fprintf (stderr, "unknown parameter %s\n", t[0].toRawUTF8()); return 1; }
+        }
+        juce::MemoryBlock mb; juce::File (in).loadFileAsData (mb);
+        std::vector<float> x (mb.getSize() / sizeof (float)); std::memcpy (x.data(), mb.getData(), x.size() * sizeof (float));
+        p.setPlayConfigDetails (2, 2, fs, 512); p.prepareToPlay (fs, 512);
+        const int L = p.getLatencySamples();
+        x.resize (x.size() + (size_t) L, 0.f);
+        auto y = runPlugin (p, x, fs, 512);
+        juce::File (out).deleteFile(); juce::FileOutputStream os { juce::File (out) };
+        os.write (y.data() + L, (y.size() - (size_t) L) * sizeof (float));
+        std::printf ("rendered %d samples, latency %d removed\n", (int) (y.size() - (size_t) L), L);
+        return 0;
+    }
     if (auto* snap = std::getenv ("RBA_SNAPSHOT"))       // render the editor to PNG files and exit
     {
         for (int u = 0; u <= 1; ++u)
@@ -57,7 +81,7 @@ int main()
     int fails = 0;
     // 1) plug-in (oversampling Off) vs core model
     {
-        RbaProcessor p; setP (p, "threshold", 25.4f); setP (p, "oslive", 0); setP (p, "rendermode", 2);
+        RbaProcessor p; setP (p, "threshold", 25.4f); setP (p, "oslive", 0); setP (p, "rendermode", 2); setP (p, "bandlimit", 0);
         auto y = runPlugin (p, x, fs, 512);
         rba::MonoModel m; m.prepare (rba::makeElRey(), fs); rba::Settings s; s.threshold = 25.4; m.update (s);
         const int L = p.getLatencySamples();
@@ -94,10 +118,39 @@ int main()
     }
     // 3) Dry/Wet 0 % = the input, delayed by the reported latency
     {
-        RbaProcessor p; setP (p, "mix", 0.f); setP (p, "oslive", 2); setP (p, "rendermode", 2);
+        RbaProcessor p; setP (p, "mix", 0.f); setP (p, "oslive", 0); setP (p, "rendermode", 2); setP (p, "bandlimit", 0);
         auto y = runPlugin (p, x, fs, 333); const int L = p.getLatencySamples();
         double maxd = 0; for (int i = L; i < N; ++i) maxd = std::max (maxd, std::abs ((double) y[(size_t) i] - x[(size_t) (i - L)]));
-        std::printf ("dry/wet 0%% = input delayed by %d: max diff %.2e -> %s\n", L, maxd, maxd < 1e-6 ? "OK" : "FAIL"); fails += maxd >= 1e-6;
+        std::printf ("dry/wet 0%% (OS off, FILTER OFF) = input delayed by %d: max diff %.2e -> %s\n", L, maxd, maxd < 1e-6 ? "OK" : "FAIL"); fails += maxd >= 1e-6;
+    }
+    // 3b) FILTER alignment: the linear path (Dry/Wet 0 %) in every OVERSAMPLE x FILTER setting, ANALOG and LINEAR:
+    //     same latency everywhere, low-frequency delay exactly on the reported latency, LINEAR = no phase in the audio band
+    for (int ph = 0; ph <= 1; ++ph)
+    {
+        int latRef = -1; bool ok = true; double worstDc = 0, worstPh = 0;
+        for (int os = 0; os <= 2; ++os)
+            for (int m = 0; m <= 2; ++m)
+            {
+                RbaProcessor p; setP (p, "mix", 0.f); setP (p, "oslive", (float) os); setP (p, "rendermode", 2);
+                setP (p, "bandlimit", (float) m); setP (p, "phase", (float) ph);
+                std::vector<float> imp (16384, 0.f); imp[100] = 1.f;
+                auto h = runPlugin (p, imp, fs, 512); const int L = p.getLatencySamples();
+                if (latRef < 0) latRef = L; ok = ok && L == latRef;
+                std::vector<double> hd (h.begin() + 100, h.end());
+                worstDc = std::max (worstDc, std::abs (pa::dcDelay (hd) - L));
+                // phase vs a pure delay of L at 1, 5, 10, 15 kHz
+                for (double fq : { 1000.0, 5000.0, 10000.0, 15000.0 })
+                {
+                    std::complex<double> H (0);
+                    for (size_t k = 0; k < hd.size(); ++k) H += hd[k] * std::polar (1.0, -2 * rba::kPi * fq * ((double) k - L) / fs);
+                    double a = std::abs (std::arg (H)) * 180 / rba::kPi;
+                    if (ph == 1 || fq <= 1000.0) worstPh = std::max (worstPh, a);
+                }
+            }
+        const bool pass = ok && worstDc < 0.05 && worstPh < (ph ? 1.0 : 1.5);
+        std::printf ("FILTER %s: latency %d in every OS x OFF/CLEAN/AIR (%s), LF delay off by %.3f samples, phase error %.2f deg (%s) -> %s\n",
+                     ph ? "LINEAR" : "ANALOG", latRef, ok ? "same" : "DIFFERENT", worstDc, worstPh, ph ? "1-15 kHz" : "1 kHz", pass ? "OK" : "FAIL");
+        fails += ! pass;
     }
     // 4) Linked vs dual-mono with a one-sided signal
     {
@@ -184,10 +237,12 @@ int main()
         fails += ! ok;
     }
     // 7) CPU: 20 s of stereo at 96 kHz per oversampling setting
-    for (int os = 0; os <= 2; ++os)
+    for (int run = 0; run < 9; ++run)
     {
+        const int os = run % 3, m = run / 3;          // FILTER CLEAN (default), then OFF, then AIR
+        const int mode = m == 0 ? 1 : (m == 1 ? 0 : 2);
         RbaProcessor p; setP (p, "threshold", 25.4f); setP (p, "oslive", (float) os); setP (p, "rendermode", 2);
-        setP (p, "clip", 1); setP (p, "pre", 1); setP (p, "prelines", 1);
+        setP (p, "clip", 1); setP (p, "pre", 1); setP (p, "prelines", 1); setP (p, "bandlimit", (float) mode);
         p.setPlayConfigDetails (2, 2, fs, 512); p.prepareToPlay (fs, 512);
         juce::AudioBuffer<float> b (2, 512); juce::MidiBuffer midi; juce::Random rnd (1);
         const int blocks = (int) (20 * fs / 512);
@@ -198,7 +253,8 @@ int main()
             p.processBlock (b, midi);
         }
         const double ms = juce::Time::getMillisecondCounterHiRes() - t0;
-        std::printf ("CPU (El Rey + Clipper + Preamp), stereo 96 kHz, oversampling %dx: %.2f%% of one core (20 s of audio in %.0f ms)\n", 1 << os, 100.0 * ms / 20000.0, ms);
+        std::printf ("CPU (El Rey + Clipper + Preamp), stereo 96 kHz, FILTER %s, oversampling %dx: %.2f%% of one core\n",
+                     mode == 0 ? "OFF  " : (mode == 1 ? "CLEAN" : "AIR  "), 1 << os, 100.0 * ms / 20000.0);
     }
     std::printf (fails ? "\n%d FAILED\n" : "\nALL OK\n", fails);
     return fails;

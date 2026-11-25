@@ -241,6 +241,8 @@ RbaEditor::RbaEditor (RbaProcessor& p)
       renderOsSeg (P (ID::osrender), { "Off", "2x", "4x", "8x" }),
       renderModeSeg (P (ID::rendermode), { "Auto", "Always", "Never" }),
       rangeSeg (P (ID::rcahot), { "Normal", "+8" }),
+      filterSeg (P (ID::bandlimit), { "Off", "Clean", "Air" }),
+      phaseSeg (P (ID::phase), { "Analog", "Linear" }),
       powerTog (P (ID::power), "ON", "OFF"),
       detTog (P (ID::link), "LINK ON", "LINK OFF", 0, 1),
       clipTog (P (ID::clip), "CLIPPER ON", "CLIPPER OFF"),
@@ -260,7 +262,7 @@ RbaEditor::RbaEditor (RbaProcessor& p)
 {
     setLookAndFeel (&look);
     for (auto* c : std::initializer_list<Component*> { &unitSeg, &powerTog, &bumpSeg, &detTog, &modeSeg, &rcaRelSeg, &clipTog,
-             &preTog, &linesSeg, &threeDSeg, &osSeg, &renderOsSeg, &renderModeSeg, &rangeSeg, &drive, &threshold, &attack, &release,
+             &preTog, &linesSeg, &threeDSeg, &osSeg, &renderOsSeg, &renderModeSeg, &rangeSeg, &filterSeg, &phaseSeg, &drive, &threshold, &attack, &release,
              &filter, &rcaFilter, &balance, &crush, &clipMakeup, &preDrive, &makeup, &mix, &gr })
         addAndMakeVisible (c);
 
@@ -383,16 +385,20 @@ void RbaEditor::paint (Graphics& g)
     {
         const float l = Decibels::gainToDecibels (pkSmooth[0], -99.f), r = Decibels::gainToDecibels (pkSmooth[1], -99.f);
         g.setColour (ui::dim); g.setFont (Font (FontOptions (Font::getDefaultMonospacedFontName(), 11.f, Font::plain)));
-        g.drawText (String (l, 1) + " / " + String (r, 1) + " dBFS peak", meterArea.getX(), meterArea.getY() + 46, meterArea.getWidth(), 14, Justification::centredLeft, false);
+        g.drawText (String (l, 1) + " / " + String (r, 1) + " pk", meterArea.getX(), meterArea.getY() + 46, meterArea.getWidth(), 14, Justification::centredLeft, false);
     }
-    g.setColour (ui::border); g.fillRect (osSeg.getX() - 16, footer.getY() + 18, 1, footer.getHeight() - 36);
+    g.setColour (ui::border); g.fillRect (filterSeg.getX() - 12, footer.getY() + 18, 1, footer.getHeight() - 36);
+    textSpaced (g, "FILTER", { filterSeg.getX(), filterSeg.getY() - 18, 140, 14 }, Justification::centredLeft, 12.f, true, ui::label);
+    textSpaced (g, "PHASE", { phaseSeg.getX(), phaseSeg.getY() - 18, 120, 14 }, Justification::centredLeft, 12.f, true, ui::label);
     textSpaced (g, "OVERSAMPLE", { osSeg.getX(), osSeg.getY() - 18, 140, 14 }, Justification::centredLeft, 12.f, true, ui::label);
     textSpaced (g, "RENDER OS", { renderOsSeg.getX(), renderOsSeg.getY() - 18, 140, 14 }, Justification::centredLeft, 12.f, true, ui::label);
     textSpaced (g, "USE RENDER OS", { renderModeSeg.getX(), renderModeSeg.getY() - 18, 160, 14 }, Justification::centredLeft, 12.f, true, ui::label);
     const String stat = String (proc.sampleRateNow() / 1000.0, 1) + " kHz  " + String::fromUTF8 ("\xc2\xb7") + "  running "
                       + (proc.activeFactor.load() > 1 ? String (proc.activeFactor.load()) + "x" : String ("1x"))
                       + (proc.rendering.load() ? " (render)" : "") + "  " + String::fromUTF8 ("\xc2\xb7") + "  latency "
-                      + String (proc.latencyNow.load()) + " samples (fixed)";
+                      + String (proc.latencyNow.load()) + " samples (fixed)"
+                      + ((P (ID::bandlimit).getValue() > 0.25f && proc.sampleRateNow() * proc.activeFactor.load() < 88000.0)
+                             ? "  " + String::fromUTF8 ("\xc2\xb7") + "  filter needs 88.2 kHz+ inside" : String());
     g.setColour (ui::dim); g.setFont (Font (FontOptions (Font::getDefaultMonospacedFontName(), 11.f, Font::plain)));
     g.drawText (stat, statusArea, Justification::centredLeft, false);
 }
@@ -442,9 +448,11 @@ void RbaEditor::resized()
     // footer
     makeup.setBounds (footer.getX() + 96, footer.getY() + 10, 78, 90);
     mix.setBounds (footer.getX() + 176, footer.getY() + 10, 78, 90);
-    meterArea = { footer.getX() + 268, footer.getY() + 22, 210, 64 };
-    osSeg.setBounds (footer.getX() + 510, footer.getY() + 30, 170, 32);
-    renderOsSeg.setBounds (footer.getX() + 694, footer.getY() + 30, 170, 32);
-    renderModeSeg.setBounds (footer.getX() + 878, footer.getY() + 30, 180, 32);
-    statusArea = { footer.getX() + 510, footer.getY() + 70, 548, 22 };
+    meterArea = { footer.getX() + 266, footer.getY() + 22, 104, 64 };
+    filterSeg.setBounds (footer.getX() + 394, footer.getY() + 30, 132, 32);
+    phaseSeg.setBounds (footer.getX() + 536, footer.getY() + 30, 116, 32);
+    osSeg.setBounds (footer.getX() + 664, footer.getY() + 30, 110, 32);
+    renderOsSeg.setBounds (footer.getX() + 786, footer.getY() + 30, 110, 32);
+    renderModeSeg.setBounds (footer.getX() + 908, footer.getY() + 30, 150, 32);
+    statusArea = { footer.getX() + 394, footer.getY() + 70, 664, 22 };
 }

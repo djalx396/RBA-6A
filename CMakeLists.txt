@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.22)
 # Must come BEFORE project(): on macOS, project() creates this cache entry and a later set() is ignored,
 # which made the plug-in require the build machine's own macOS (would not load on the Intel Mac mini).
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS")
-project(RBA6A VERSION 0.2.5)
+project(RBA6A VERSION 0.2.6)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -25,8 +25,8 @@ if(APPLE)
 endif()
 
 juce_add_plugin(RBA6A
-    COMPANY_NAME "Chris"
-    BUNDLE_ID "com.chris.rba6a"
+    COMPANY_NAME "396"
+    BUNDLE_ID "com.396.rba6a"
     PLUGIN_MANUFACTURER_CODE Chrs
     PLUGIN_CODE Rb6A
     FORMATS ${RBA_FORMATS}

@@ -25,6 +25,7 @@ public:
     void paint (juce::Graphics&) override;
     void mouseUp (const juce::MouseEvent&) override;
     void setVisibleCount (int n) { visibleCount = n; repaint(); }
+    float fontSize = 13.f;
 private:
     void timerCallback() override { repaint(); }
     int current() const;
@@ -39,6 +40,7 @@ public:
     void paint (juce::Graphics&) override;
     void mouseUp (const juce::MouseEvent&) override;
     bool isOn() const;
+    std::function<float()> ledLevel;          // optional: 0..1 lamp brightness while on (0 = dimmed, 1 = fully lit)
 private:
     void timerCallback() override { repaint(); }
     juce::RangedAudioParameter& param; juce::String textOn, textOff; int onIndex, offIndex;
@@ -90,12 +92,12 @@ private:
     RbaProcessor& proc;
     RbaLook look;
 
-    Segmented unitSeg, bumpSeg, modeSeg, rcaRelSeg, linesSeg, threeDSeg,
-              osSeg, renderOsSeg, renderModeSeg, rangeSeg, filterSeg, phaseSeg;
+    Segmented unitSeg, bumpSeg, rcaRelSeg, linesSeg, threeDSeg,
+              osSeg, renderOsSeg, renderModeSeg, rangeSeg, filterSeg, phaseSeg, meterSeg;
     LitToggle powerTog, detTog, clipTog, preTog;
     Knob drive, threshold, attack, release, filter, rcaFilter, balance, crush, clipMakeup, preDrive, makeup, mix;
     GrMeter gr;
-    float grSmooth = 0.f, pkSmooth[2] { 0.f, 0.f };
+    float grSmooth = 0.f, pkSmooth[2] { 0.f, 0.f }, inSmooth[2] { 0.f, 0.f }, clipShow = 0.f;
     juce::Rectangle<int> secInput, secComp, secClip, secPre, footer, meterArea, statusArea, rcaRelArea;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (RbaEditor)

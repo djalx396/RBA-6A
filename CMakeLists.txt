@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.22)
 # Must come BEFORE project(): on macOS, project() creates this cache entry and a later set() is ignored,
 # which made the plug-in require the build machine's own macOS (would not load on the Intel Mac mini).
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS")
-project(RBA6A VERSION 0.2.6)
+project(RBA6A VERSION 0.3.0)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

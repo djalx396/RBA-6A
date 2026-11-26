@@ -29,24 +29,23 @@ juce::AudioProcessorValueTreeState::ParameterLayout RbaProcessor::createLayout()
         v.push_back (std::make_unique<APB> (juce::ParameterID { id, 2 }, name, def));
     };
 
-    c (ID::unit, "Unit", { "El Rey", "Vintage RCA" }, 0);
+    c (ID::unit, "Unit", { "Modern", "Vintage" }, 0);
     b (ID::power, "Power", true);
     f (ID::input, "Drive", -18.f, 18.f, 0.01f, 0.f, db);
     c (ID::bump, "Bump", { "Off", "Pre", "Post" }, 1);
     f (ID::threshold, "Threshold", 0.f, 40.f, 0.01f, 20.f, one);
-    f (ID::attack, "Attack (El Rey)", 1.f, 3.f, 0.01f, 2.f,
+    f (ID::attack, "Attack (Modern)", 1.f, 3.f, 0.01f, 2.f,
        [] (float x, int) { return juce::String (x, 2) + (x < 1.25f ? " slow" : (x > 2.75f ? " fast" : "")); });
-    f (ID::release, "Release (El Rey)", 1.f, 5.f, 0.01f, 3.f,
+    f (ID::release, "Release (Modern)", 1.f, 5.f, 0.01f, 3.f,
        [] (float x, int) { return juce::String (x, 2) + (x < 1.5f ? " slow" : (x > 4.5f ? " fast" : "")); });
-    c (ID::rcarel, "Release (RCA)", { "Single", "Dual" }, 0);
-    c (ID::rcahot, "Range (RCA)", { "Normal", "+8 dB" }, 0);
-    f (ID::filter, "SC Filter (El Rey)", 0.f, 250.f, 0.1f, 0.f,
+    c (ID::rcarel, "Release (Vintage)", { "Single", "Dual" }, 0);
+    c (ID::rcahot, "Range", { "Normal", "+9 dB" }, 0);
+    f (ID::filter, "SC Filter (Modern)", 0.f, 250.f, 0.1f, 0.f,
        [] (float x, int) { return x < 1.f ? juce::String ("Off") : juce::String (juce::roundToInt (x)) + " Hz"; });
-    f (ID::rcafilter, "SC Filter (RCA)", 0.f, 500.f, 0.1f, 0.f,
+    f (ID::rcafilter, "SC Filter (Vintage)", 0.f, 500.f, 0.1f, 0.f,
        [] (float x, int) { return x < 100.f ? juce::String ("Off") : juce::String (juce::roundToInt (x)) + " Hz"; });
     f (ID::balance, "P-P Balance", -100.f, 100.f, 0.1f, 0.f, pc);
     c (ID::link, "Detector", { "Linked", "Dual mono" }, 0);
-    c (ID::msmode, "Mode", { "L/R", "M/S" }, 0);
     b (ID::clip, "Clipper", false);
     f (ID::crush, "Crush", 0.f, 40.f, 0.01f, 25.f, one);
     f (ID::clipmakeup, "Clip Make Up", 0.f, 10.f, 0.01f, 0.f, db);
@@ -61,6 +60,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout RbaProcessor::createLayout()
     c (ID::rendermode, "Use render oversampling", { "Auto (when rendering)", "Always", "Never" }, 0, false);
     c (ID::bandlimit, "Filter", { "OFF", "CLEAN", "AIR" }, 1, false);
     c (ID::phase, "Filter Phase", { "ANALOG", "LINEAR" }, 0, false);
+    c (ID::meter, "Output Meter", { "Peak", "Average" }, 0, false);
     return { v.begin(), v.end() };
 }
 
@@ -71,9 +71,9 @@ RbaProcessor::RbaProcessor()
       apvts (*this, nullptr, "RBA6A", createLayout())
 {
     const juce::String ids[pCount] = { ID::unit, ID::power, ID::input, ID::bump, ID::threshold, ID::attack, ID::release,
-        ID::rcarel, ID::filter, ID::rcafilter, ID::balance, ID::link, ID::msmode, ID::clip, ID::crush, ID::clipmakeup,
+        ID::rcarel, ID::filter, ID::rcafilter, ID::balance, ID::link, ID::clip, ID::crush, ID::clipmakeup,
         ID::pre, ID::predrive, ID::prelines, ID::threed, ID::makeup, ID::mix, ID::oslive, ID::osrender, ID::rendermode, ID::rcahot,
-        ID::bandlimit, ID::phase };
+        ID::bandlimit, ID::phase, ID::meter };
     for (int i = 0; i < pCount; ++i) p[i] = apvts.getRawParameterValue (ids[i]);
 }
 
@@ -88,7 +88,8 @@ rba::Settings RbaProcessor::readSettings() const
 {
     rba::Settings s;
     s.inputDb   = p[pInput]->load();
-    s.threshold = p[pThreshold]->load();
+    s.threshold = p[pThreshold]->load()                                   // Range +9: 9 dB more compression (Modern)
+                + (juce::roundToInt (p[pRcaHot]->load()) == 1 ? 9.0 : 0.0);
     s.attack    = p[pAttack]->load();
     s.release   = p[pRelease]->load();
     s.filterHz  = p[pFilter]->load();
@@ -246,6 +247,8 @@ void RbaProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     makeupSm.reset (fs, 0.02); makeupSm.setCurrentAndTargetValue (juce::Decibels::decibelsToGain ((float) s.makeupDb));
     mixSm.reset (fs, 0.02);    mixSm.setCurrentAndTargetValue ((float) s.mix);
     dryRunning = false; lastMode = -1; lastPhase = -1;
+    msCoef = 1.0 - std::exp (-1.0 / (0.3 * fs));
+    for (int c = 0; c < 2; ++c) msIn[c] = msOut[c] = 0;
     updateLatency();
 
     const int f = wantedFactor (isNonRealtime());
@@ -299,7 +302,6 @@ void RbaProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuf
     const bool rcaUnit  = juce::roundToInt (p[pUnit]->load()) == 1;
     const int  bump     = juce::roundToInt (p[pBump]->load());          // 0 Off, 1 Pre, 2 Post
     const bool linked   = nc == 2 && juce::roundToInt (p[pLink]->load()) == 0;
-    const bool ms       = nc == 2 && juce::roundToInt (p[pMs]->load()) == 1;
     const bool clipOn   = p[pClip]->load() > 0.5f;
     const bool preOn    = p[pPre]->load() > 0.5f;
     const bool stereoLn = nc == 2 && juce::roundToInt (p[pPreLines]->load()) == 1;
@@ -307,8 +309,8 @@ void RbaProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuf
     const bool dual     = juce::roundToInt (p[pRcaRel]->load()) == 1;
     const double rcaFilt = p[pRcaFilter]->load() >= 100.f ? p[pRcaFilter]->load() : 0.0;
     const auto rcaU = rba::makeRca();
-    // matched to the El Rey unit; Range +8 dB drives the limiter 8 dB harder (the v0.2 range at the top of the knob)
-    const double rcaGdb = rba::rcaInputGainDb (s.threshold) + (juce::roundToInt (p[pRcaHot]->load()) == 1 ? 8.0 : 0.0);
+    // matched to the Modern unit; Range +9 drives the limiter 9 dB harder
+    const double rcaGdb = rba::rcaInputGainDb (p[pThreshold]->load()) + (juce::roundToInt (p[pRcaHot]->load()) == 1 ? 9.0 : 0.0);
     const double rcaG = std::pow (10.0, rcaGdb / 20.0), rcaInv = 1.0 / rcaG;
     const double preDriveDb = p[pPreDrive]->load();
     const auto preU = rba::makePre();
@@ -336,6 +338,12 @@ void RbaProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuf
 
     for (int c = 0; c < nc; ++c) dryBuf.copyFrom (c, 0, buffer, c, 0, n);
     auto& bl = set.bl[mode];
+    float ipk[2] = { 0.f, 0.f };
+    for (int c = 0; c < nc; ++c)
+    {
+        const float* d = dryBuf.getReadPointer (c);
+        for (int i = 0; i < n; ++i) { ipk[c] = juce::jmax (ipk[c], std::abs (d[i])); msIn[c] += msCoef * ((double) d[i] * d[i] - msIn[c]); }
+    }
 
     // ---- base rate: input EQ (bump path for Bump = Pre, else the flat path) and Drive gain
     for (int c = 0; c < nc; ++c)
@@ -355,7 +363,6 @@ void RbaProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuf
     {
         double x[2] = { ch[0][i], nc > 1 ? ch[1][i] : 0.0 };
         for (int c = 0; c < nc; ++c) x[c] = bl[c].process (0, x[c]);                 // D
-        if (ms) { const double m = 0.5 * (x[0] + x[1]), sd = 0.5 * (x[0] - x[1]); x[0] = m; x[1] = sd; }
         double y[2] = { 0, 0 };
         if (! rcaUnit)
         {
@@ -397,7 +404,6 @@ void RbaProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuf
                 }
             for (int c = 0; c < nc; ++c) y[c] *= rcaInv / gIn;
         }
-        if (ms) { const double m = y[0], sd = y[1]; y[0] = m + sd; y[1] = m - sd; }
         for (int c = 0; c < nc; ++c)
         {
             double v = bl[c].process (1, y[c]);                                       // C
@@ -452,11 +458,23 @@ void RbaProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuf
             if (dryRunning) dry = dryOne[c].process (dryPadD[c].process ((float) dryFir[c].process (fir, dryBuf.getSample (c, i)), pad), 1);
             d[i] = mx * wet + (1.f - mx) * dry;
             pk[c] = juce::jmax (pk[c], std::abs (d[i]));
+            msOut[c] += msCoef * ((double) d[i] * d[i] - msOut[c]);
         }
     }
     for (int c = nc; c < buffer.getNumChannels(); ++c) buffer.clear (c, 0, n);
     grMeter = grMax;
     outPeak[0] = pk[0]; outPeak[1] = nc > 1 ? pk[1] : pk[0];
+    inPeak[0] = ipk[0]; inPeak[1] = nc > 1 ? ipk[1] : ipk[0];
+    for (int c = 0; c < 2; ++c)
+    {
+        const int k = nc > 1 ? c : 0;
+        outRms[c] = (float) std::sqrt (msOut[k]); inRms[c] = (float) std::sqrt (msIn[k]);
+    }
+    if (clipOn)
+    {
+        double r = 0; for (int c = 0; c < nc; ++c) r = juce::jmax (r, set.clip[c].takeReductionDb());
+        if (r > clipRed.load()) clipRed = (float) r;          // the editor reads and resets it
+    }
 }
 
 void RbaProcessor::getStateInformation (juce::MemoryBlock& dest)

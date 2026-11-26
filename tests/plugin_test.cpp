@@ -208,7 +208,38 @@ int main()
             runPlugin (p, t, fs, 512); grs[h] = p.grMeter.load();
         }
         const bool ok = grs[1] > grs[0] + 5.0;
-        std::printf ("RCA Range Normal vs +8 dB at Threshold 25, -10 dBFS: GR %.2f vs %.2f dB -> %s\n", grs[0], grs[1], ok ? "OK" : "FAIL");
+        std::printf ("Vintage Range Normal vs +9 at Threshold 25, -10 dBFS: GR %.2f vs %.2f dB -> %s\n", grs[0], grs[1], ok ? "OK" : "FAIL");
+        fails += ! ok;
+    }
+    // 5c) Range +9 on the Modern unit too: about 9 dB of extra threshold
+    {
+        double grs[2];
+        for (int h = 0; h <= 1; ++h)
+        {
+            RbaProcessor p; setP (p, "unit", 0); setP (p, "threshold", 20.f); setP (p, "rcahot", (float) h);
+            setP (p, "oslive", 1); setP (p, "rendermode", 2);
+            std::vector<float> t ((size_t) fs); for (int i = 0; i < (int) fs; ++i) t[(size_t) i] = (float) (0.3162 * std::sin (2 * rba::kPi * 1000 * i / fs));
+            runPlugin (p, t, fs, 512); grs[h] = p.grMeter.load();
+        }
+        // and the same GR as Threshold 29 at Normal
+        RbaProcessor q; setP (q, "unit", 0); setP (q, "threshold", 29.f); setP (q, "oslive", 1); setP (q, "rendermode", 2);
+        std::vector<float> t ((size_t) fs); for (int i = 0; i < (int) fs; ++i) t[(size_t) i] = (float) (0.3162 * std::sin (2 * rba::kPi * 1000 * i / fs));
+        runPlugin (q, t, fs, 512); const double g29 = q.grMeter.load();
+        const bool ok = grs[1] > grs[0] + 2.0 && std::abs (grs[1] - g29) < 0.05;
+        std::printf ("Modern Range Normal vs +9 at Threshold 20, -10 dBFS: GR %.2f vs %.2f dB (Threshold 29: %.2f) -> %s\n", grs[0], grs[1], g29, ok ? "OK" : "FAIL");
+        fails += ! ok;
+    }
+    // 5d) Clipper lamp: the reported peak reduction
+    {
+        double r[3]; const float crushes[3] = { 0.f, 25.f, 35.f };
+        for (int k = 0; k < 3; ++k)
+        {
+            RbaProcessor p; setP (p, "clip", 1); setP (p, "crush", crushes[k]); setP (p, "power", 0); setP (p, "oslive", 1); setP (p, "rendermode", 2);
+            std::vector<float> t ((size_t) (fs / 2)); for (int i = 0; i < (int) t.size(); ++i) t[(size_t) i] = (float) (0.9 * std::sin (2 * rba::kPi * 1000 * i / fs));
+            runPlugin (p, t, fs, 512); r[k] = p.clipRed.load();
+        }
+        const bool ok = r[0] < 0.25 && r[1] > 1.0 && r[2] > 5.0;
+        std::printf ("Clipper lamp at 0 dBFS-ish: Crush 0 %.2f dB, 25 %.2f dB, 35 %.2f dB of peak reduction -> %s\n", r[0], r[1], r[2], ok ? "OK" : "FAIL");
         fails += ! ok;
     }
     // 6) every stage on (Clipper, Preamp Stereo, 3D bump, M/S, both units): finite output, sensible level, L != R
@@ -216,7 +247,7 @@ int main()
     {
         RbaProcessor p; setP (p, "unit", (float) u); setP (p, "threshold", 25.f); setP (p, "clip", 1); setP (p, "crush", 30.f);
         setP (p, "pre", 1); setP (p, "predrive", 20.f); setP (p, "prelines", 1); setP (p, "threed", 1); setP (p, "bump", 2);
-        setP (p, "msmode", 1); setP (p, "oslive", 2); setP (p, "rendermode", 2);
+        setP (p, "oslive", 2); setP (p, "rendermode", 2);
         p.setPlayConfigDetails (2, 2, fs, 512); p.prepareToPlay (fs, 512);
         juce::AudioBuffer<float> b (2, 512); juce::MidiBuffer midi; juce::Random rnd (3); bool finite = true; double e = 0, d = 0;
         for (int blk = 0; blk < 400; ++blk)

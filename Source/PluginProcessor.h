@@ -9,11 +9,11 @@ namespace ID
 {
     static const juce::String unit { "unit" }, power { "power" }, input { "input" }, bump { "bump" },
         threshold { "threshold" }, rcahot { "rcahot" }, attack { "attack" }, release { "release" }, rcarel { "rcarel" },
-        filter { "filter" }, rcafilter { "rcafilter" }, balance { "balance" }, link { "link" }, msmode { "msmode" },
+        filter { "filter" }, rcafilter { "rcafilter" }, balance { "balance" }, link { "link" },
         clip { "clip" }, crush { "crush" }, clipmakeup { "clipmakeup" },
         pre { "pre" }, predrive { "predrive" }, prelines { "prelines" }, threed { "threed" },
         makeup { "makeup" }, mix { "mix" }, oslive { "oslive" }, osrender { "osrender" }, rendermode { "rendermode" },
-        bandlimit { "bandlimit" }, phase { "phase" };
+        bandlimit { "bandlimit" }, phase { "phase" }, meter { "meter" };
 }
 
 class RbaProcessor : public juce::AudioProcessor
@@ -51,6 +51,10 @@ public:
     // for the editor
     std::atomic<float> grMeter { 0.f };                 // dB, max over the last block
     std::atomic<float> outPeak[2] { { 0.f }, { 0.f } }; // linear, max over the last block
+    std::atomic<float> inPeak[2]  { { 0.f }, { 0.f } };
+    std::atomic<float> outRms[2]  { { 0.f }, { 0.f } }; // linear, 300 ms average (RMS)
+    std::atomic<float> inRms[2]   { { 0.f }, { 0.f } };
+    std::atomic<float> clipRed { 0.f };                 // dB the Clipper took off the peaks since the editor last read it
     std::atomic<int>   activeFactor { 1 };
     std::atomic<bool>  rendering { false };
     std::atomic<int>   latencyNow { 0 };
@@ -58,8 +62,8 @@ public:
     int maxFactorForRate() const { return maxFactor; }
 
     enum PIdx { pUnit, pPower, pInput, pBump, pThreshold, pAttack, pRelease, pRcaRel, pFilter, pRcaFilter, pBalance,
-                pLink, pMs, pClip, pCrush, pClipMk, pPre, pPreDrive, pPreLines, p3D, pMakeup, pMix,
-                pOsLive, pOsRender, pRenderMode, pRcaHot, pBandLimit, pPhase, pCount };
+                pLink, pClip, pCrush, pClipMk, pPre, pPreDrive, pPreLines, p3D, pMakeup, pMix,
+                pOsLive, pOsRender, pRenderMode, pRcaHot, pBandLimit, pPhase, pMeter, pCount };
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
@@ -95,6 +99,7 @@ private:
     std::array<OsSet, 4> sets;
     int activeSet = 0, maxFactor = 8, fixedLatency = 0, numCh = 2;
     double fs = 48000;
+    double msIn[2] {}, msOut[2] {}, msCoef = 0.0;      // 300 ms mean-square meters
 
     rba::PreEQ preEq[2];
     rba::FracDelay preDel[2];

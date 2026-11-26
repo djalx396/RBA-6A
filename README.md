@@ -1,4 +1,4 @@
-# RBA-6A v0.2.6 (test build) - by 396
+# RBA-6A v0.3.0 (test build) - by 396
 
 A light vari-mu compressor with two units:
 - **El Rey**: modelled on captures of Acustica Audio's El Rey 2. Soft knee, smooth RMS compression, Attack 1–3, Release 1–5.
@@ -19,6 +19,18 @@ A light vari-mu compressor with two units:
   - Live Off/2x/4x/8x (8x only up to 48 kHz, 4x up to 96 kHz).
   - Render OS, and Use render OS: Auto (only while rendering) / Always / Never.
   - The latency is fixed, so switching never shifts the timing.
+
+## What changed in v0.3.0
+- **Units renamed: MODERN** (was El Rey) and **VINTAGE** (was Vintage RCA). Same sound.
+- **RANGE Normal / +9** now works on both units (was "RCA RANGE" +8, Vintage only):
+  Modern = the Threshold knob 9 higher (Threshold 20 at +9 = Threshold 29); Vintage = 9 dB more drive into the limiter.
+  Sessions saved with +8 open with +9.
+- **Clipper lamp:** the button reads CLIPPER and lights up (amber outline) when the Clipper is on. Its lamp shows how hard it clips:
+  dimmed when it isn't clipping, then 10 steps of 0.5 dB of peak reduction, fully lit from about 5 dB.
+- **M/S removed.** The compressor always works L/R (the Mode button and parameter are gone; sessions saved in M/S open in L/R).
+- **Output meters:** four bars, top to bottom L OUT, L IN, R IN, R OUT, with a PK / AVG switch (peak, or a 300 ms average).
+- **Windows 10 and later:** the workflow (`build.yml`) now also builds a 64-bit Windows VST3 (no Visual C++ runtime needed).
+  Every run gives two downloads: RBA-6A-macOS-build-N and RBA-6A-Windows-build-N.
 
 ## What changed in v0.2.6
 - **FILTER: OFF / CLEAN / AIR** - staged ultrasonic band-limiting, the same module as FreeLA2 (`Source/FreeBandLimit.h`,

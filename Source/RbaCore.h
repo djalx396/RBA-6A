@@ -481,7 +481,7 @@ class Clipper
 {
 public:
     void prepare (const ClipUnit& u, double fs) { cu = u; a = 1 - std::exp (-2 * kPi * u.fc / fs); reset(); }
-    void reset() { lpIn = lpOut = 0; }
+    void reset() { lpIn = lpOut = 0; eMax = 0; }
     void update (double crush, double makeupDb)
     {
         G = std::pow (10.0, (crush - cu.O) / 20.0); invG = 1 / G;
@@ -491,13 +491,21 @@ public:
     {
         lpIn += a * (u - lpIn);
         const double e = (u + cu.gamma * lpIn) * G;
-        const double v = e * std::pow (1 + std::pow (std::abs (e), cu.p), -cu.s / cu.p) * invG;
+        const double ae = std::abs (e);
+        if (ae > eMax) eMax = ae;
+        const double v = e * std::pow (1 + std::pow (ae, cu.p), -cu.s / cu.p) * invG;
         const double y = (v - cu.gamma * (1 - a) * lpOut) / (1 + cu.gamma * a);
         lpOut += a * (y - lpOut);
         return y * mk;
     }
+    // largest peak reduction (dB) since the last call
+    double takeReductionDb() noexcept
+    {
+        const double r = 20.0 * cu.s / cu.p * std::log10 (1 + std::pow (eMax, cu.p));
+        eMax = 0; return r;
+    }
 private:
-    ClipUnit cu; double a = 0.01, lpIn = 0, lpOut = 0, G = 1, invG = 1, mk = 1;
+    ClipUnit cu; double a = 0.01, lpIn = 0, lpOut = 0, G = 1, invG = 1, mk = 1, eMax = 0;
 };
 
 // Preamp (the RCA output stage), fitted to the Nebula BA-6A pre: gentle EQ and a drive curve

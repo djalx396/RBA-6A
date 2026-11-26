@@ -53,7 +53,7 @@ void Segmented::paint (Graphics& g)
         }
         if (i > 0) { g.setColour (ui::border); g.drawVerticalLine ((int) b.getX(), b.getY() + 1, b.getBottom() - 1); }
         g.setColour (! en ? ui::off : (i == cur ? Colour (0xff1a1612) : ui::cream));
-        g.setFont (font (13.f, true).withExtraKerningFactor (0.04f));
+        g.setFont (font (fontSize, true).withExtraKerningFactor (0.04f));
         g.drawFittedText (labels[i].toUpperCase(), b.toNearestInt().reduced (3, 0), Justification::centred, 1, 0.75f);
     }
 }
@@ -92,11 +92,17 @@ void LitToggle::paint (Graphics& g)
     const float total = 10.f + 10.f + tw;
     const float x0 = r.getCentreX() - total / 2.f, cy = r.getCentreY();
     auto led = Rectangle<float> (x0, cy - 5.f, 10.f, 10.f);
-    if (on)
+    const float lv = on ? (ledLevel ? jlimit (0.f, 1.f, ledLevel()) : 1.f) : 0.f;
+    if (on && lv > 0.f)
     {
-        g.setColour (ui::accent.withAlpha (0.25f)); g.fillEllipse (led.expanded (4.f));
-        g.setColour (ui::accent.withAlpha (0.45f)); g.fillEllipse (led.expanded (2.f));
-        g.setColour (ui::accent); g.fillEllipse (led);
+        g.setColour (ui::accent.withAlpha (0.25f * lv)); g.fillEllipse (led.expanded (4.f));
+        g.setColour (ui::accent.withAlpha (0.45f * lv)); g.fillEllipse (led.expanded (2.f));
+        g.setColour (ui::border.interpolatedWith (ui::accent, 0.3f + 0.7f * lv)); g.fillEllipse (led);
+    }
+    else if (on)                                          // on but idle: a dimmed lamp
+    {
+        g.setColour (ui::border.interpolatedWith (ui::accent, 0.3f)); g.fillEllipse (led);
+        g.setColour (ui::knobEdge); g.drawEllipse (led.reduced (0.5f), 1.f);
     }
     else
     {
@@ -231,21 +237,21 @@ void GrMeter::paint (Graphics& g)
 // ---------------------------------------------------------------------------------- editor
 RbaEditor::RbaEditor (RbaProcessor& p)
     : AudioProcessorEditor (&p), proc (p),
-      unitSeg (P (ID::unit), { "El Rey", "Vintage RCA" }),
+      unitSeg (P (ID::unit), { "Modern", "Vintage" }),
       bumpSeg (P (ID::bump), { "Off", "Pre", "Post" }),
-      modeSeg (P (ID::msmode), { "L / R", "M / S" }),
       rcaRelSeg (P (ID::rcarel), { "Single", "Dual" }),
       linesSeg (P (ID::prelines), { "Mono", "Stereo" }),
       threeDSeg (P (ID::threed), { "Off", "On" }, { 0, 1 }),
       osSeg (P (ID::oslive), { "Off", "2x", "4x", "8x" }),
       renderOsSeg (P (ID::osrender), { "Off", "2x", "4x", "8x" }),
       renderModeSeg (P (ID::rendermode), { "Auto", "Always", "Never" }),
-      rangeSeg (P (ID::rcahot), { "Normal", "+8" }),
+      rangeSeg (P (ID::rcahot), { "Normal", "+9" }),
       filterSeg (P (ID::bandlimit), { "Off", "Clean", "Air" }),
       phaseSeg (P (ID::phase), { "Analog", "Linear" }),
+      meterSeg (P (ID::meter), { "Pk", "Avg" }),
       powerTog (P (ID::power), "ON", "OFF"),
       detTog (P (ID::link), "LINK ON", "LINK OFF", 0, 1),
-      clipTog (P (ID::clip), "CLIPPER ON", "CLIPPER OFF"),
+      clipTog (P (ID::clip), "CLIPPER", "CLIPPER"),
       preTog (P (ID::pre), "PREAMP ON", "PREAMP OFF"),
       drive (p.apvts, ID::input, "Drive", u8 ("\xe2\x88\x92" "18 \xc2\xb7 +18")),
       threshold (p.apvts, ID::threshold, "THR", u8 ("0 \xc2\xb7 40")),
@@ -261,8 +267,8 @@ RbaEditor::RbaEditor (RbaProcessor& p)
       mix (p.apvts, ID::mix, "Dry/Wet", "", 44)
 {
     setLookAndFeel (&look);
-    for (auto* c : std::initializer_list<Component*> { &unitSeg, &powerTog, &bumpSeg, &detTog, &modeSeg, &rcaRelSeg, &clipTog,
-             &preTog, &linesSeg, &threeDSeg, &osSeg, &renderOsSeg, &renderModeSeg, &rangeSeg, &filterSeg, &phaseSeg, &drive, &threshold, &attack, &release,
+    for (auto* c : std::initializer_list<Component*> { &unitSeg, &powerTog, &bumpSeg, &detTog, &rcaRelSeg, &clipTog,
+             &preTog, &linesSeg, &threeDSeg, &osSeg, &renderOsSeg, &renderModeSeg, &rangeSeg, &filterSeg, &phaseSeg, &meterSeg, &drive, &threshold, &attack, &release,
              &filter, &rcaFilter, &balance, &crush, &clipMakeup, &preDrive, &makeup, &mix, &gr })
         addAndMakeVisible (c);
 
@@ -274,7 +280,9 @@ RbaEditor::RbaEditor (RbaProcessor& p)
     rcaFilter.ticksFn = [] { return StringArray { "OFF", "300", "500" }; };
     balance.ticksFn   = [] { return StringArray { u8 ("\xe2\x88\x92" "100"), "0", "+100" }; };
     attack.isEnabledFn = [this] { return ! isRca(); };
-    rangeSeg.isEnabledFn = [this] { return isRca(); };
+    meterSeg.fontSize = 10.f;
+    // Clipper lamp: dimmed while the Clipper is on but idle; 10 steps of 0.5 dB, fully lit from about 5 dB of peak reduction
+    clipTog.ledLevel = [this] { return (float) jlimit (0, 10, roundToInt (clipShow * 2.f)) / 10.f; };
     attack.showEnds  = [this] { return ! isRca(); };
     release.showEnds = [] { return true; };
     attack.valueText = [this] { return isRca() ? String ("fixed") : P (ID::attack).getCurrentValueAsText(); };
@@ -313,9 +321,13 @@ void RbaEditor::timerCallback()
     gr.setValue (grSmooth);
     for (int c = 0; c < 2; ++c)
     {
-        const float v = proc.outPeak[c].load();
+        const float v = proc.outPeak[c].load(), vi = proc.inPeak[c].load();
         pkSmooth[c] = v > pkSmooth[c] ? v : pkSmooth[c] * 0.92f;
+        inSmooth[c] = vi > inSmooth[c] ? vi : inSmooth[c] * 0.92f;
     }
+    const float cr = proc.clipRed.exchange (0.f);
+    clipShow = jmax (cr, clipShow - 0.25f);              // hold the peak, then fall about 7.5 dB per second
+    clipTog.repaint();
     repaint (footer); repaint (secInput); repaint (secComp.withHeight (40)); repaint (secPre);
 }
 
@@ -329,8 +341,8 @@ void RbaEditor::paint (Graphics& g)
     g.drawText ("v" RBA_VERSION, 26, 58, 120, 14, Justification::centredLeft, false);
     textSpaced (g, "VARI-MU LIMITING AMPLIFIER", { 190, 26, 360, 18 }, Justification::centredLeft, 13.f, true, ui::sub);
     const bool rca = isRca();
-    textSpaced (g, rca ? "Vintage RCA  " + String::fromUTF8 ("\xc2\xb7") + "  hard-knee limiting  " + String::fromUTF8 ("\xc2\xb7") + "  single / dual release"
-                       : "El Rey  " + String::fromUTF8 ("\xc2\xb7") + "  soft knee  " + String::fromUTF8 ("\xc2\xb7") + "  smooth RMS compression",
+    textSpaced (g, rca ? "Vintage  " + String::fromUTF8 ("\xc2\xb7") + "  hard-knee limiting  " + String::fromUTF8 ("\xc2\xb7") + "  single / dual release"
+                       : "Modern  " + String::fromUTF8 ("\xc2\xb7") + "  soft knee  " + String::fromUTF8 ("\xc2\xb7") + "  smooth RMS compression",
                 { 190, 46, 420, 18 }, Justification::centredLeft, 13.f, false, ui::accent);
     textSpaced (g, "UNIT", { 590, 30, 42, 30 }, Justification::centredRight, 12.f, true, ui::sub);
     g.setColour (ui::border); g.fillRect (932, 29, 1, 32);
@@ -345,7 +357,7 @@ void RbaEditor::paint (Graphics& g)
     };
     section (secInput, "1 " + String::fromUTF8 ("\xc2\xb7") + " INPUT", "INTO COMP");
     section (secComp, "2 " + String::fromUTF8 ("\xc2\xb7") + " COMPRESSOR", "");
-    textSpaced (g, rca ? "VINTAGE RCA" : "EL REY", { secComp.getRight() - 160, secComp.getY() + 12, 146, 20 }, Justification::centredRight, 12.f, false, ui::accent);
+    textSpaced (g, rca ? "VINTAGE" : "MODERN", { secComp.getRight() - 160, secComp.getY() + 12, 146, 20 }, Justification::centredRight, 12.f, false, ui::accent);
     section (secClip, "3 " + String::fromUTF8 ("\xc2\xb7") + " CLIPPER", "");
     section (secPre, "4 " + String::fromUTF8 ("\xc2\xb7") + " PREAMP", "ALWAYS LAST");
 
@@ -356,8 +368,7 @@ void RbaEditor::paint (Graphics& g)
     g.drawFittedText (bump == 0 ? "Bump off: flat" : (bump == 1 ? "Pre: the compressor hears the bump" : "Post: bump tone after the compressor"),
                       secInput.getX() + 14, bumpSeg.getBottom() + 6, secInput.getWidth() - 28, 30, Justification::topLeft, 2, 1.0f);
     textSpaced (g, "DETECTOR", { detTog.getX(), detTog.getY() - 20, 120, 16 }, Justification::centredLeft, 12.f, true, ui::label);
-    textSpaced (g, "MODE", { modeSeg.getX(), modeSeg.getY() - 20, 120, 16 }, Justification::centredLeft, 12.f, true, ui::label);
-    textSpaced (g, "RCA RANGE", { rangeSeg.getX(), rangeSeg.getY() - 20, 136, 16 }, Justification::centredLeft, 12.f, true, rca ? ui::label : ui::off);
+    textSpaced (g, "RANGE", { rangeSeg.getX(), rangeSeg.getY() - 20, 136, 16 }, Justification::centredLeft, 12.f, true, ui::label);
     if (rca)
     {
         textSpaced (g, "REL", { rcaRelArea.getX(), rcaRelArea.getY() + 118, rcaRelArea.getWidth(), 15 }, Justification::centred, 12.f, true, ui::label);
@@ -372,20 +383,29 @@ void RbaEditor::paint (Graphics& g)
     g.setColour (ui::panel); g.fillRoundedRectangle (footer.toFloat(), 10.f);
     g.setColour (ui::border); g.drawRoundedRectangle (footer.toFloat().reduced (0.5f), 10.f, 1.f);
     textSpaced (g, "OUTPUT", { footer.getX() + 18, footer.getY(), 80, footer.getHeight() }, Justification::centredLeft, 15.f, true, ui::cream);
-    for (int c = 0; c < 2; ++c)
+    // meters, top to bottom: L OUT, L IN, R IN, R OUT (the inputs sit between the outputs)
     {
-        auto bar = Rectangle<int> (meterArea.getX() + 20, meterArea.getY() + 8 + c * 18, meterArea.getWidth() - 20, 10);
-        textSpaced (g, c == 0 ? "L" : "R", { meterArea.getX(), bar.getY() - 3, 14, 16 }, Justification::centredLeft, 12.f, true, ui::label);
-        g.setColour (ui::border); g.fillRoundedRectangle (bar.toFloat(), 5.f);
-        const float db = Decibels::gainToDecibels (pkSmooth[c], -60.f);
-        const float frac = jlimit (0.f, 1.f, (db + 60.f) / 60.f);
-        g.setColour (db > -0.1f ? ui::needle : ui::accent);
-        g.fillRoundedRectangle (bar.toFloat().withWidth (bar.getWidth() * frac), 5.f);
-    }
-    {
-        const float l = Decibels::gainToDecibels (pkSmooth[0], -99.f), r = Decibels::gainToDecibels (pkSmooth[1], -99.f);
-        g.setColour (ui::dim); g.setFont (Font (FontOptions (Font::getDefaultMonospacedFontName(), 11.f, Font::plain)));
-        g.drawText (String (l, 1) + " / " + String (r, 1) + " pk", meterArea.getX(), meterArea.getY() + 46, meterArea.getWidth(), 14, Justification::centredLeft, false);
+        const bool avg = roundToInt (P (ID::meter).convertFrom0to1 (P (ID::meter).getValue())) == 1;
+        const float outV[2] = { avg ? proc.outRms[0].load() : pkSmooth[0], avg ? proc.outRms[1].load() : pkSmooth[1] };
+        const float inV[2]  = { avg ? proc.inRms[0].load()  : inSmooth[0], avg ? proc.inRms[1].load()  : inSmooth[1] };
+        struct Row { const char* label; float v; bool out; };
+        const Row rows[4] = { { "L OUT", outV[0], true }, { "L IN", inV[0], false }, { "R IN", inV[1], false }, { "R OUT", outV[1], true } };
+        for (int k = 0; k < 4; ++k)
+        {
+            const int y = meterArea.getY() + k * 11 + (k >= 2 ? 4 : 0);
+            auto bar = Rectangle<int> (meterArea.getX() + 34, y, meterArea.getWidth() - 34, 7);
+            g.setColour (rows[k].out ? ui::label : ui::dim); g.setFont (font (9.f, true));
+            g.drawText (rows[k].label, meterArea.getX(), y - 2, 32, 11, Justification::centredLeft, false);
+            g.setColour (ui::border); g.fillRoundedRectangle (bar.toFloat(), 3.5f);
+            const float db = Decibels::gainToDecibels (rows[k].v, -60.f);
+            const float frac = jlimit (0.f, 1.f, (db + 60.f) / 60.f);
+            g.setColour (db > -0.1f ? ui::needle : (rows[k].out ? ui::accent : ui::accent.withAlpha (0.55f)));
+            g.fillRoundedRectangle (bar.toFloat().withWidth (bar.getWidth() * frac), 3.5f);
+        }
+        const float l = Decibels::gainToDecibels (outV[0], -99.f), r = Decibels::gainToDecibels (outV[1], -99.f);
+        g.setColour (ui::dim); g.setFont (Font (FontOptions (Font::getDefaultMonospacedFontName(), 10.f, Font::plain)));
+        g.drawFittedText (String (l, 1) + "/" + String (r, 1), meterArea.getX(), meterSeg.getY(), meterSeg.getX() - meterArea.getX() - 3, meterSeg.getHeight(),
+                          Justification::centredLeft, 1, 0.8f);
     }
     g.setColour (ui::border); g.fillRect (filterSeg.getX() - 12, footer.getY() + 18, 1, footer.getHeight() - 36);
     textSpaced (g, "FILTER", { filterSeg.getX(), filterSeg.getY() - 18, 140, 14 }, Justification::centredLeft, 12.f, true, ui::label);
@@ -421,9 +441,8 @@ void RbaEditor::resized()
 
     // compressor
     gr.setBounds (secComp.getX() + 14, top + 44, 300, 150);
-    detTog.setBounds (secComp.getX() + 326, top + 62, 136, 32);
-    modeSeg.setBounds (secComp.getX() + 326, top + 118, 136, 32);
-    rangeSeg.setBounds (secComp.getX() + 326, top + 174, 136, 32);
+    detTog.setBounds (secComp.getX() + 326, top + 76, 136, 32);
+    rangeSeg.setBounds (secComp.getX() + 326, top + 150, 136, 32);
     const int ky = top + 222, kx = secComp.getX() + 14, kw = (secComp.getWidth() - 28) / 5;
     threshold.setBounds (kx, ky, kw, 136);
     attack.setBounds (kx + kw, ky, kw, 136);
@@ -446,9 +465,10 @@ void RbaEditor::resized()
     threeDSeg.setBounds (secPre.getX() + 14, top + 300, secPre.getWidth() - 28, 36);
 
     // footer
-    makeup.setBounds (footer.getX() + 96, footer.getY() + 10, 78, 90);
-    mix.setBounds (footer.getX() + 176, footer.getY() + 10, 78, 90);
-    meterArea = { footer.getX() + 266, footer.getY() + 22, 104, 64 };
+    makeup.setBounds (footer.getX() + 90, footer.getY() + 10, 78, 90);
+    mix.setBounds (footer.getX() + 164, footer.getY() + 10, 78, 90);
+    meterArea = { footer.getX() + 252, footer.getY() + 18, 128, 68 };
+    meterSeg.setBounds (meterArea.getRight() - 50, meterArea.getY() + 50, 50, 18);
     filterSeg.setBounds (footer.getX() + 394, footer.getY() + 30, 132, 32);
     phaseSeg.setBounds (footer.getX() + 536, footer.getY() + 30, 116, 32);
     osSeg.setBounds (footer.getX() + 664, footer.getY() + 30, 110, 32);

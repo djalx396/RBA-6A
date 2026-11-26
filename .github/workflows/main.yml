@@ -1,5 +1,10 @@
 name: Build RBA-6A
 
+# Two builds on every upload (commit), each with its own download in the run's page:
+#   RBA-6A-macOS-build-N    VST3 + AU, universal (Apple Silicon + Intel), macOS 11 or later
+#   RBA-6A-Windows-build-N  VST3, 64-bit, Windows 10 or later (no Visual C++ runtime to install)
+# N is the build number; the plug-in shows its version under the title. If one build fails, the other still finishes.
+
 on:
   push:
   workflow_dispatch:
@@ -16,27 +21,31 @@ jobs:
       - name: Build VST3 + AU
         run: cmake --build build --config Release --target RBA6A_VST3 RBA6A_AU -- -quiet
 
+      - name: "Check minimum macOS (must be 11 or lower, so older Macs can load it)"
+        run: |
+          for b in "build/RBA6A_artefacts/Release/VST3/RBA-6A.vst3" "build/RBA6A_artefacts/Release/AU/RBA-6A.component"; do
+            plist=$(/usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" "$b/Contents/Info.plist" 2>/dev/null || echo none)
+            echo "$b  Info.plist LSMinimumSystemVersion: $plist"
+            vs=$(otool -arch all -l "$b/Contents/MacOS/RBA-6A" | awk '/LC_BUILD_VERSION/{f=1} f&&/minos/{print $2; f=0}')
+            [ -n "$vs" ] || { echo "ERROR: no minimum-OS entry found in the binary"; exit 1; }
+            for v in $vs; do
+              echo "  binary minos: $v"
+              [ "${v%%.*}" -le 11 ] || { echo "ERROR: binary needs macOS $v"; exit 1; }
+            done
+            if [ "$plist" != "none" ] && [ "${plist%%.*}" -gt 11 ]; then echo "ERROR: Info.plist needs macOS $plist"; exit 1; fi
+          done
+
       - name: Ad-hoc sign
         run: |
           codesign --force --deep -s - "build/RBA6A_artefacts/Release/VST3/RBA-6A.vst3"
           codesign --force --deep -s - "build/RBA6A_artefacts/Release/AU/RBA-6A.component"
 
-      - name: Check architectures
-        run: lipo -info "build/RBA6A_artefacts/Release/VST3/RBA-6A.vst3/Contents/MacOS/RBA-6A"
-
-      - name: Check minimum macOS (must be 11.0 or lower)
+      - name: "Check architectures (must list x86_64 and arm64)"
         run: |
-          fail=0
-          for b in "build/RBA6A_artefacts/Release/VST3/RBA-6A.vst3" "build/RBA6A_artefacts/Release/AU/RBA-6A.component"; do
-            v=$(/usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" "$b/Contents/Info.plist" 2>/dev/null || echo none)
-            echo "$b  Info.plist minimum: $v"
-            case "$v" in 10.*|11|11.0) ;; *) fail=1 ;; esac
-            for m in $(otool -arch all -l "$b/Contents/MacOS/RBA-6A" | awk '/minos/ {print $2}'); do
-              echo "  binary minos: $m"
-              case "$m" in 10.*|11|11.0) ;; *) fail=1 ;; esac
-            done
+          for f in "build/RBA6A_artefacts/Release/VST3/RBA-6A.vst3/Contents/MacOS/RBA-6A" "build/RBA6A_artefacts/Release/AU/RBA-6A.component/Contents/MacOS/RBA-6A"; do
+            a=$(lipo -archs "$f"); echo "$f: $a"
+            case "$a" in *x86_64*arm64*|*arm64*x86_64*) ;; *) echo "ERROR: not universal"; exit 1;; esac
           done
-          exit $fail
 
       - name: Package
         run: |
@@ -47,5 +56,53 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: RBA-6A-macOS
+          name: RBA-6A-macOS-build-${{ github.run_number }}
           path: RBA-6A-macOS.zip
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "Configure (Windows 10 and later, 64-bit, Visual C++ runtime built in)"
+        run: cmake -B build -A x64 -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+
+      - name: Build VST3
+        run: cmake --build build --config Release --target RBA6A_VST3 -- /m /verbosity:minimal
+
+      - name: "Check the plug-in (64-bit, needs no Visual C++ runtime)"
+        shell: pwsh
+        run: |
+          $dll = "build/RBA6A_artefacts/Release/VST3/RBA-6A.vst3/Contents/x86_64-win/RBA-6A.vst3"
+          if (-not (Test-Path $dll)) { Write-Error "plug-in not found: $dll"; exit 1 }
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          $dumpbin = Get-ChildItem "$vs\VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($dumpbin) {
+            $out = & $dumpbin.FullName /headers /dependents $dll | Out-String
+            $out -split "`n" | Select-String -Pattern "machine|\.dll" | ForEach-Object { $_.Line.Trim() }
+            if ($out -notmatch "8664 machine") { Write-Error "not a 64-bit (x64) plug-in"; exit 1 }
+            if ($out -match "(?i)vcruntime|msvcp") { Write-Error "plug-in needs the Visual C++ runtime"; exit 1 }
+          } else { Write-Warning "dumpbin not found, skipped the dependency check" }
+
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item -Recurse "build/RBA6A_artefacts/Release/VST3/RBA-6A.vst3" dist/
+          @(
+            "RBA-6A (by 396) for Windows 10 and later (64-bit VST3), build ${{ github.run_number }}",
+            "",
+            "Install:",
+            "1. If Windows shows this zip as blocked: right-click it > Properties > tick Unblock > OK. Then unzip it.",
+            "2. Copy the whole RBA-6A.vst3 folder into  C:\Program Files\Common Files\VST3",
+            "   (Windows asks for administrator permission: click Continue).",
+            "3. Rescan plug-ins in your DAW (REAPER: Options > Preferences > Plug-ins > VST > Re-scan).",
+            "",
+            "Update: delete the old RBA-6A.vst3 folder there first, then copy the new one."
+          ) | Set-Content dist/INSTALL-Windows.txt
+          Compress-Archive -Path dist/* -DestinationPath RBA-6A-Windows.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RBA-6A-Windows-build-${{ github.run_number }}
+          path: RBA-6A-Windows.zip
